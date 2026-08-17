@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Product, ProductImage
+from .models import Product, ProductImage, ProductImport
 
 
 class ProductImageInline(admin.TabularInline):
@@ -20,3 +20,17 @@ class ProductAdmin(admin.ModelAdmin):
 class ProductImageAdmin(admin.ModelAdmin):
     list_display = ("id", "product", "url", "is_valid", "created_at")
     list_filter = ("is_valid",)
+
+
+@admin.register(ProductImport)
+class ProductImportAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "status",
+        "total_rows",
+        "imported_rows",
+        "failed_rows",
+        "created_at",
+        "completed_at",
+    )
+    list_filter = ("status",)

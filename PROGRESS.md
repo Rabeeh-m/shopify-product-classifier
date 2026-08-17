@@ -1,12 +1,14 @@
-# Stage 3: Taxonomy Ingestion — COMPLETE
+# Stage 4: Product Import — COMPLETE
 
-All items checked off. Ready for Stage 4.
+All items checked off. Ready for Stage 5.
 
 ## Completed
-- `load_taxonomy` management command with `--source` and `--dry-run` flags
-- Idempotent loading of categories, attributes, attribute values, and category-attribute links
-- Handle-based attribute lookup (fixture uses lowercase handles, DB stores display names)
-- Full-path computation for nested categories (`Parent > Child > Grandchild`)
-- 10 command tests covering counts, idempotency, dry-run, parent chains, attribute links, error handling
-- Sample fixture with 75 categories, 11 attributes, 65 values, 187 category-attribute links
-- 21 total tests passing (11 model + 10 command), all linting clean
+- `ProductImport` model (file, status, total/imported/failed rows, error_log, timestamps)
+- `products/services/import_service.py` — CSV + XLSX parser, column validation, row-level error handling
+- POST `/api/products/import/` — accepts file upload, validates headers, imports synchronously
+- GET `/api/products/import/{id}/` — returns import status and counts
+- File type + size validation (configurable `MAX_UPLOAD_SIZE_MB`, `ALLOWED_UPLOAD_EXTENSIONS`)
+- Comma and pipe-separated image URLs, each creates a `ProductImage` row
+- Missing title rows skipped with row number logged; missing required columns return 400
+- 16 new tests (10 service + 6 API) — all passing
+- 37 total tests passing, all linting clean

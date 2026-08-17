@@ -1,0 +1,5 @@
+title,description,brand,product_type,image_urls
+Classic T-Shirt,A comfortable cotton t-shirt,Acme Apparel,Shirt,https://example.com/img1.jpg|https://example.com/img2.jpg
+Running Shoes,Lightweight running shoes,FastFeet,Footwear,https://example.com/shoe.jpg
+,This should be skipped due to missing title,,,
+Desk Lamp,LED desk lamp,LiteBright,Home,"https://example.com/lamp1.jpg,https://example.com/lamp2.jpg"
