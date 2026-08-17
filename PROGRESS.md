@@ -1,15 +1,11 @@
-# Stage 6: AI-Based Classification Service — COMPLETE
+# Stage 7: Confidence Scoring & Classification Persistence — COMPLETE
 
-Ready for Stage 7.
+Ready for Stage 8.
 
 ## Completed
-- `classification/exceptions.py` — `ClassificationError`, `ClassificationParseError`, `AIClientError`, `AITimeoutError`
-- `classification/services/ai_client.py` — Anthropic wrapper with 3-attempt retry, exponential backoff via SDK defaults, timeout handling
-- `classification/services/classifier.py` — `_build_prompt()` builds structured prompt with candidates, `_parse_and_validate()` enforces JSON contract, `classify_product()` orchestrates
-- Prompt includes: product title, description, brand, product_type, image URL; candidate categories with id/name/full_path
-- Strict validation: chosen_category_id must be in candidate set, confidence 0–100, alternatives/attributes must be lists
-- Retry policy: 3 attempts for timeouts, 429s, and 5xx; immediate fail on 4xx (non-429)
-- `AI_MODEL_NAME` and `AI_REQUEST_TIMEOUT` settings; `ANTHROPIC_API_KEY` env var
-- `anthropic>=0.40,<1.0` added to dependencies
-- 30 new tests (6 prompt, 11 parse/validate, 7 classify_product, 6 retry logic)
-- 91 total tests passing, all linting clean (black, isort, ruff)
+- `classification/services/confidence.py` — pure function combining AI self-reported confidence with data-completeness rules: title-only cap at 50, no-description cap at 65, no-image 5-point penalty (floor 30), mutually exclusive rules
+- `classification/services/persistence.py` — `save_classification()` wraps all writes in `transaction.atomic()`: creates/updates Classification row (category, confidence, alternatives, status), creates ClassificationAttribute rows with case-insensitive AttributeValue resolution or free_text_value fallback, mirrors status to Product.status
+- `CLASSIFICATION_CONFIDENCE_THRESHOLD` setting (default 70): above/at threshold → product.status='done'; below → product.status='needs_review'; Classification.status always='needs_review' (no auto-approval)
+- 15 confidence tests (full data, no description, title-only, no-image penalty, edge cases) — all pure, no DB
+- 16 persistence tests (resolve attribute, create classification, resolve values, free text fallback, threshold mapping, idempotency, rollback on failure, missing category)
+- 122 total tests passing, all linting clean
