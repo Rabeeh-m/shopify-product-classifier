@@ -41,3 +41,34 @@ python manage.py runserver
 ```
 
 Visit `http://127.0.0.1:8000/admin/` to access the Django admin.
+
+## Loading Taxonomy Data
+
+The `load_taxonomy` management command ingests Shopify's product taxonomy into the database.
+
+```bash
+# Load from local JSON file
+python manage.py load_taxonomy --source taxonomy/fixtures/sample_taxonomy.json
+
+# Dry run (preview without writing)
+python manage.py load_taxonomy --source taxonomy/fixtures/sample_taxonomy.json --dry-run
+
+# Load from a URL
+python manage.py load_taxonomy --source https://example.com/taxonomy.json
+```
+
+### Input JSON format
+
+```json
+{
+  "categories": [
+    { "id": "abc", "name": "Furniture", "parent": null, "attributes": [] },
+    { "id": "def", "name": "Sofas", "parent": "abc", "attributes": ["color", "material"] }
+  ],
+  "attributes": [
+    { "id": "xyz", "name": "Color", "handle": "color", "values": ["Red", "Blue"] }
+  ]
+}
+```
+
+The command is idempotent — running it multiple times will not create duplicates.

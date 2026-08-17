@@ -1,0 +1,147 @@
+{
+  "categories": [
+    {"id": "fr", "name": "Furniture", "parent": null, "attributes": ["color", "pattern", "material"]},
+    {"id": "fr-1", "name": "Beds & Accessories", "parent": "fr", "attributes": ["color", "material", "bedding_size"]},
+    {"id": "fr-1-1", "name": "Beds & Bed Frames", "parent": "fr-1", "attributes": ["color", "material", "bedding_size", "bed/frame_features"]},
+    {"id": "fr-1-1-1", "name": "Bunk Beds", "parent": "fr-1-1", "attributes": ["color", "material", "bedding_size"]},
+    {"id": "fr-1-1-2", "name": "Platform Beds", "parent": "fr-1-1", "attributes": ["color", "material", "bedding_size"]},
+    {"id": "fr-1-1-3", "name": "Sleigh Beds", "parent": "fr-1-1", "attributes": ["color", "material", "bedding_size"]},
+    {"id": "fr-1-1-4", "name": "Loft Beds", "parent": "fr-1-1", "attributes": ["color", "material", "bedding_size"]},
+    {"id": "fr-1-1-5", "name": "Canopy Beds", "parent": "fr-1-1", "attributes": ["color", "material", "bedding_size"]},
+    {"id": "fr-1-2", "name": "Headboards", "parent": "fr-1", "attributes": ["color", "material"]},
+    {"id": "fr-1-3", "name": "Mattresses", "parent": "fr-1", "attributes": ["bedding_size", "firmness", "mattress_features"]},
+    {"id": "fr-1-3-1", "name": "Memory Foam Mattresses", "parent": "fr-1-3", "attributes": ["bedding_size", "firmness"]},
+    {"id": "fr-1-3-2", "name": "Innerspring Mattresses", "parent": "fr-1-3", "attributes": ["bedding_size", "firmness"]},
+    {"id": "fr-1-3-3", "name": "Latex Mattresses", "parent": "fr-1-3", "attributes": ["bedding_size", "firmness"]},
+    {"id": "fr-1-3-4", "name": "Hybrid Mattresses", "parent": "fr-1-3", "attributes": ["bedding_size", "firmness"]},
+    {"id": "fr-2", "name": "Sofas & Loveseats", "parent": "fr", "attributes": ["color", "material", "pattern"]},
+    {"id": "fr-2-1", "name": "Sectional Sofas", "parent": "fr-2", "attributes": ["color", "material", "pattern"]},
+    {"id": "fr-2-2", "name": "Loveseats", "parent": "fr-2", "attributes": ["color", "material", "pattern"]},
+    {"id": "fr-2-3", "name": "Sleeper Sofas", "parent": "fr-2", "attributes": ["color", "material", "bedding_size"]},
+    {"id": "fr-2-4", "name": "Chesterfield Sofas", "parent": "fr-2", "attributes": ["color", "material"]},
+    {"id": "fr-2-5", "name": "Modular Sofas", "parent": "fr-2", "attributes": ["color", "material", "pattern"]},
+    {"id": "fr-2-6", "name": "Settees", "parent": "fr-2", "attributes": ["color", "material"]},
+    {"id": "fr-3", "name": "Chairs", "parent": "fr", "attributes": ["color", "material"]},
+    {"id": "fr-3-1", "name": "Armchairs", "parent": "fr-3", "attributes": ["color", "material"]},
+    {"id": "fr-3-2", "name": "Recliners", "parent": "fr-3", "attributes": ["color", "material"]},
+    {"id": "fr-3-3", "name": "Dining Chairs", "parent": "fr-3", "attributes": ["color", "material"]},
+    {"id": "fr-3-4", "name": "Accent Chairs", "parent": "fr-3", "attributes": ["color", "material"]},
+    {"id": "fr-3-5", "name": "Rocking Chairs", "parent": "fr-3", "attributes": ["color", "material"]},
+    {"id": "fr-4", "name": "Tables", "parent": "fr", "attributes": ["color", "material"]},
+    {"id": "fr-4-1", "name": "Coffee Tables", "parent": "fr-4", "attributes": ["color", "material"]},
+    {"id": "fr-4-2", "name": "Dining Tables", "parent": "fr-4", "attributes": ["color", "material"]},
+    {"id": "fr-4-3", "name": "Side Tables", "parent": "fr-4", "attributes": ["color", "material"]},
+    {"id": "fr-4-4", "name": "Desk Tables", "parent": "fr-4", "attributes": ["color", "material"]},
+    {"id": "fr-4-5", "name": "Console Tables", "parent": "fr-4", "attributes": ["color", "material"]},
+    {"id": "fr-5", "name": "Storage & Organization", "parent": "fr", "attributes": ["color", "material"]},
+    {"id": "fr-5-1", "name": "Bookcases", "parent": "fr-5", "attributes": ["color", "material"]},
+    {"id": "fr-5-2", "name": "Shelving Units", "parent": "fr-5", "attributes": ["color", "material"]},
+    {"id": "fr-5-3", "name": "Cabinets", "parent": "fr-5", "attributes": ["color", "material"]},
+    {"id": "fr-5-4", "name": "Dressers", "parent": "fr-5", "attributes": ["color", "material"]},
+    {"id": "fr-5-5", "name": "Wardrobes", "parent": "fr-5", "attributes": ["color", "material"]},
+    {"id": "el", "name": "Electronics", "parent": null, "attributes": ["color", "brand"]},
+    {"id": "el-1", "name": "Computers", "parent": "el", "attributes": ["color", "brand"]},
+    {"id": "el-1-1", "name": "Laptops", "parent": "el-1", "attributes": ["color", "brand"]},
+    {"id": "el-1-2", "name": "Desktops", "parent": "el-1", "attributes": ["color", "brand"]},
+    {"id": "el-1-3", "name": "Tablets", "parent": "el-1", "attributes": ["color", "brand"]},
+    {"id": "el-2", "name": "Audio", "parent": "el", "attributes": ["color", "brand"]},
+    {"id": "el-2-1", "name": "Headphones", "parent": "el-2", "attributes": ["color", "brand"]},
+    {"id": "el-2-2", "name": "Speakers", "parent": "el-2", "attributes": ["color", "brand"]},
+    {"id": "el-2-3", "name": "Microphones", "parent": "el-2", "attributes": ["color", "brand"]},
+    {"id": "el-3", "name": "Cameras", "parent": "el", "attributes": ["color", "brand"]},
+    {"id": "el-3-1", "name": "Digital Cameras", "parent": "el-3", "attributes": ["color", "brand"]},
+    {"id": "el-3-2", "name": "Action Cameras", "parent": "el-3", "attributes": ["color", "brand"]},
+    {"id": "el-3-3", "name": "Camera Lenses", "parent": "el-3", "attributes": ["color", "brand"]},
+    {"id": "cl", "name": "Clothing", "parent": null, "attributes": ["color", "pattern", "material", "target_gender"]},
+    {"id": "cl-1", "name": "Tops", "parent": "cl", "attributes": ["color", "pattern", "material"]},
+    {"id": "cl-1-1", "name": "T-Shirts", "parent": "cl-1", "attributes": ["color", "pattern", "material"]},
+    {"id": "cl-1-2", "name": "Blouses", "parent": "cl-1", "attributes": ["color", "pattern", "material"]},
+    {"id": "cl-1-3", "name": "Polo Shirts", "parent": "cl-1", "attributes": ["color", "pattern", "material"]},
+    {"id": "cl-1-4", "name": "Sweaters", "parent": "cl-1", "attributes": ["color", "pattern", "material"]},
+    {"id": "cl-2", "name": "Bottoms", "parent": "cl", "attributes": ["color", "pattern", "material"]},
+    {"id": "cl-2-1", "name": "Jeans", "parent": "cl-2", "attributes": ["color", "pattern", "material"]},
+    {"id": "cl-2-2", "name": "Shorts", "parent": "cl-2", "attributes": ["color", "pattern", "material"]},
+    {"id": "cl-2-3", "name": "Skirts", "parent": "cl-2", "attributes": ["color", "pattern", "material"]},
+    {"id": "cl-2-4", "name": "Pants", "parent": "cl-2", "attributes": ["color", "pattern", "material"]},
+    {"id": "cl-3", "name": "Outerwear", "parent": "cl", "attributes": ["color", "pattern", "material"]},
+    {"id": "cl-3-1", "name": "Jackets", "parent": "cl-3", "attributes": ["color", "pattern", "material"]},
+    {"id": "cl-3-2", "name": "Coats", "parent": "cl-3", "attributes": ["color", "pattern", "material"]},
+    {"id": "cl-3-3", "name": "Vests", "parent": "cl-3", "attributes": ["color", "pattern", "material"]},
+    {"id": "cl-4", "name": "Dresses", "parent": "cl", "attributes": ["color", "pattern", "material"]},
+    {"id": "cl-4-1", "name": "Casual Dresses", "parent": "cl-4", "attributes": ["color", "pattern", "material"]},
+    {"id": "cl-4-2", "name": "Formal Dresses", "parent": "cl-4", "attributes": ["color", "pattern", "material"]},
+    {"id": "cl-4-3", "name": "Maxi Dresses", "parent": "cl-4", "attributes": ["color", "pattern", "material"]},
+    {"id": "cl-5", "name": "Activewear", "parent": "cl", "attributes": ["color", "pattern", "material", "activity"]},
+    {"id": "cl-5-1", "name": "Yoga Pants", "parent": "cl-5", "attributes": ["color", "material"]},
+    {"id": "cl-5-2", "name": "Running Shorts", "parent": "cl-5", "attributes": ["color", "material"]},
+    {"id": "cl-5-3", "name": "Sports Bras", "parent": "cl-5", "attributes": ["color", "material"]}
+  ],
+  "attributes": [
+    {
+      "id": 1,
+      "name": "Color",
+      "handle": "color",
+      "values": ["Red", "Blue", "Green", "Black", "White", "Yellow", "Pink", "Gray", "Brown", "Navy"]
+    },
+    {
+      "id": 3,
+      "name": "Pattern",
+      "handle": "pattern",
+      "values": ["Solid", "Striped", "Floral", "Plaid", "Polka Dot", "Geometric", "Abstract"]
+    },
+    {
+      "id": 4,
+      "name": "Material",
+      "handle": "material",
+      "values": ["Cotton", "Polyester", "Leather", "Wood", "Metal", "Plastic", "Wool", "Silk", "Linen", "Nylon"]
+    },
+    {
+      "id": 5,
+      "name": "Activity",
+      "handle": "activity",
+      "values": ["Running", "Yoga", "Hiking", "Swimming", "Cycling", "Weightlifting"]
+    },
+    {
+      "id": 30,
+      "name": "Age group",
+      "handle": "age_group",
+      "values": ["Adults", "Kids", "Toddlers", "Babies", "Teens"]
+    },
+    {
+      "id": 837,
+      "name": "Target gender",
+      "handle": "target_gender",
+      "values": ["Female", "Male", "Unisex"]
+    },
+    {
+      "id": 1259,
+      "name": "Bedding size",
+      "handle": "bedding_size",
+      "values": ["Twin", "Twin XL", "Full", "Queen", "King", "California King"]
+    },
+    {
+      "id": 2001,
+      "name": "Firmness",
+      "handle": "firmness",
+      "values": ["Soft", "Medium", "Firm", "Extra Firm"]
+    },
+    {
+      "id": 2002,
+      "name": "Mattress features",
+      "handle": "mattress_features",
+      "values": ["Memory Foam", "Cooling", "Hypoallergenic", "Waterproof"]
+    },
+    {
+      "id": 2003,
+      "name": "Bed/frame features",
+      "handle": "bed/frame_features",
+      "values": ["Adjustable", "Storage", "Convertible", "Foldable"]
+    },
+    {
+      "id": 2004,
+      "name": "Brand",
+      "handle": "brand",
+      "values": ["Apple", "Samsung", "Sony", "LG", "Nike", "Adidas"]
+    }
+  ]
+}
