@@ -164,6 +164,7 @@ def import_products(file_obj, filename):
             ]
         )
     except Exception as exc:
+        logger.exception("Import failed for %s", filename)
         import_obj.status = ProductImport.Status.FAILED
         import_obj.error_log = [{"error": str(exc)}]
         import_obj.save(update_fields=["status", "error_log"])

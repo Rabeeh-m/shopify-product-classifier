@@ -1,3 +1,5 @@
+import logging
+
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -6,6 +8,8 @@ from rest_framework.views import APIView
 from products.models import ProductImport
 from products.serializers import ProductImportSerializer
 from products.services.import_service import ParseError, import_products
+
+logger = logging.getLogger(__name__)
 
 
 class ProductImportCreateView(APIView):
@@ -21,6 +25,7 @@ class ProductImportCreateView(APIView):
         try:
             import_obj = import_products(upload, upload.name)
         except ParseError as exc:
+            logger.warning("Upload rejected: %s", exc.errors)
             return Response(
                 {"errors": exc.errors},
                 status=status.HTTP_400_BAD_REQUEST,

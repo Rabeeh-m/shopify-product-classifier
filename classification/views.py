@@ -1,3 +1,5 @@
+import logging
+
 from django.contrib.auth import authenticate
 from django.db.models import Count, Q
 from rest_framework import status
@@ -14,6 +16,8 @@ from classification.services.review_service import (
     correct_classification,
 )
 from products.models import Product
+
+logger = logging.getLogger(__name__)
 
 
 class LoginView(APIView):
@@ -153,6 +157,7 @@ class ReviewApproveView(APIView):
         try:
             result = approve_classification(classification, request.user)
         except ReviewError as exc:
+            logger.warning("Approve failed for classification %d: %s", pk, exc)
             return Response({"error": str(exc)}, status=status.HTTP_409_CONFLICT)
 
         serializer = ClassificationSerializer(result, context={"request": request})
@@ -193,6 +198,7 @@ class ReviewCorrectView(APIView):
                 attributes=attributes,
             )
         except ReviewError as exc:
+            logger.warning("Correct failed for classification %d: %s", pk, exc)
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         serializer = ClassificationSerializer(result, context={"request": request})

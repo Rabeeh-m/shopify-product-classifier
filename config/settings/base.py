@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 
@@ -129,6 +130,7 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 25,
+    "EXCEPTION_HANDLER": "config.exception_handlers.custom_exception_handler",
 }
 
 # CORS — only allow known frontend origins, never wildcard
@@ -136,3 +138,72 @@ CORS_ALLOWED_ORIGINS = os.environ.get(
     "CORS_ALLOWED_ORIGINS", "http://localhost:5173"
 ).split(",")
 CORS_ALLOW_CREDENTIALS = True
+
+# Logging — structured JSON in prod, human-readable in dev
+_LOG_FORMAT = os.environ.get("DJANGO_ENV", "dev")
+_LOG_HANDLERS = ["json_console"] if _LOG_FORMAT == "prod" else ["console"]
+_LOG_FORMATTER = "json" if _LOG_FORMAT == "prod" else "verbose"
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "[{asctime}] {levelname} {name} {message}",
+            "style": "{",
+        },
+        "json": {
+            "format": "{message}",
+            "style": "{",
+            "class": "pythonjsonlogger.jsonlogger.JsonFormatter",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+        "json_console": {
+            "class": "logging.StreamHandler",
+            "formatter": "json",
+        },
+    },
+    "root": {
+        "handlers": _LOG_HANDLERS,
+        "level": "INFO",
+    },
+    "loggers": {
+        "django": {
+            "handlers": _LOG_HANDLERS,
+            "level": "INFO",
+            "propagate": False,
+        },
+        "classification": {
+            "handlers": _LOG_HANDLERS,
+            "level": "DEBUG",
+            "propagate": False,
+        },
+        "products": {
+            "handlers": _LOG_HANDLERS,
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+}
+
+SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
+if SENTRY_DSN:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.django import DjangoIntegration
+
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            integrations=[DjangoIntegration()],
+            traces_sample_rate=0.1,
+            send_default_pii=False,
+        )
+    except ImportError:
+        logging.getLogger(__name__).warning(
+            "sentry-sdk is not installed; Sentry integration disabled."
+        )

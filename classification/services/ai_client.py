@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 
 import anthropic
 
@@ -53,6 +54,7 @@ def call_ai(prompt, *, model=None, max_tokens=1024, timeout=30):
     last_exc = None
 
     for attempt in range(1, max_retries + 1):
+        start = time.monotonic()
         try:
             response = client.messages.create(
                 model=model,
@@ -60,21 +62,33 @@ def call_ai(prompt, *, model=None, max_tokens=1024, timeout=30):
                 timeout=timeout,
                 messages=[{"role": "user", "content": prompt}],
             )
+            latency_ms = (time.monotonic() - start) * 1000
             text = response.content[0].text
-            logger.debug("AI response (attempt %d): %s", attempt, text)
+            logger.info(
+                "ai_call model=%s attempt=%d latency_ms=%.0f "
+                "tokens_in=%d tokens_out=%d",
+                model,
+                attempt,
+                latency_ms,
+                response.usage.input_tokens,
+                response.usage.output_tokens,
+            )
             return text
         except anthropic.APITimeoutError as exc:
+            latency_ms = (time.monotonic() - start) * 1000
             last_exc = AITimeoutError(
                 f"AI API timed out after {timeout}s (attempt {attempt}/"
                 f"{max_retries}): {exc}"
             )
             logger.warning(
-                "AI timeout on attempt %d/%d: %s",
+                "ai_timeout attempt=%d/%d latency_ms=%.0f: %s",
                 attempt,
                 max_retries,
+                latency_ms,
                 exc,
             )
         except anthropic.APIStatusError as exc:
+            latency_ms = (time.monotonic() - start) * 1000
             status = exc.status_code
             if status >= 500 or status == 429:
                 last_exc = AIClientError(
@@ -82,22 +96,25 @@ def call_ai(prompt, *, model=None, max_tokens=1024, timeout=30):
                     f"{max_retries}): {exc}"
                 )
                 logger.warning(
-                    "AI API error %d on attempt %d/%d: %s",
+                    "ai_error status=%d attempt=%d/%d latency_ms=%.0f: %s",
                     status,
                     attempt,
                     max_retries,
+                    latency_ms,
                     exc,
                 )
             else:
                 raise AIClientError(f"AI API error {status}: {exc}") from exc
         except anthropic.APIError as exc:
+            latency_ms = (time.monotonic() - start) * 1000
             last_exc = AIClientError(
                 f"AI API error (attempt {attempt}/{max_retries}): {exc}"
             )
             logger.warning(
-                "AI API error on attempt %d/%d: %s",
+                "ai_error attempt=%d/%d latency_ms=%.0f: %s",
                 attempt,
                 max_retries,
+                latency_ms,
                 exc,
             )
 
