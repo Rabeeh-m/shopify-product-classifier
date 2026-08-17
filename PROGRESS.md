@@ -1,32 +1,37 @@
-# Stage 12: DONE
+# Stage 13: DONE
 
-Structured logging, error handling, health checks, and monitoring hooks.
+Expanded test coverage, end-to-end integration tests, and CI setup.
 
 ## Changes
-- Added LOGGING config in settings (JSON formatter for prod, human-readable for dev)
-- Created `config/exception_handlers.py` — global DRF exception handler wrapping all errors in `{"error": {"code": ..., "message": ...}}`
-- Created `GET /api/health/` endpoint (checks DB + Redis, returns 200/503 with `X-Health-Status` header)
-- Added optional Sentry integration via `SENTRY_DSN` env var
-- Added structured latency/tokens logging to `ai_client.py`
-- Added `logger.warning` to all review/import error paths
-- Added `python-json-logger` to dependencies, `sentry-sdk` as optional `[monitoring]` extra
-- 188 Django tests passing, ruff/black/isort clean
+- Added 44 new tests across 8 new test modules (232 total, up from 188)
+- Coverage on classification/products/core: 97% (up from 96%), overall: 98%
+- Created `tests/test_end_to_end.py`: full import -> classify (mocked AI) -> review -> approve flow
+- Created `classification/tests/test_ai_client.py`: retry logic, missing key, error types
+- Created `classification/tests/test_views_extra.py`: LoginView, JobStatusView, ReviewList unpaged
+- Created `classification/tests/test_review_service_extra.py`: error branches, correction_notes builder
+- Created `classification/tests/test_serializers_extra.py`: ProductMinimal, Alternative cache, ClassificationAttribute
+- Created `classification/tests/test_models_extra.py`: __str__ methods for all models
+- Created `products/tests/test_import_extra.py`: file size, empty headers, image separators
+- Created `products/tests/test_tasks.py`: Celery beat task wrapper
+- Added coverage config to `pyproject.toml` (fail-under=90)
+- Created `.github/workflows/test.yml`: CI with lint + test jobs
+- Added Testing section to README.md
+
+## Files Created
+- `.github/workflows/test.yml`
+- `tests/__init__.py`, `tests/test_end_to_end.py`
+- `classification/tests/test_ai_client.py`
+- `classification/tests/test_views_extra.py`
+- `classification/tests/test_review_service_extra.py`
+- `classification/tests/test_serializers_extra.py`
+- `classification/tests/test_models_extra.py`
+- `products/tests/test_import_extra.py`
+- `products/tests/test_tasks.py`
 
 ## Files Modified
-- `config/settings/base.py` — LOGGING, REST_FRAMEWORK EXCEPTIOIN_HANDLER, SENTRY_DSN init
-- `config/urls.py` — added core.urls
-- `config/exception_handlers.py` — NEW
-- `core/views.py` — NEW (HealthCheckView)
-- `core/urls.py` — NEW
-- `core/tests/test_health.py` — NEW (4 tests)
-- `config/tests/test_exception_handler.py` — NEW (7 tests)
-- `classification/services/ai_client.py` — latency logging
-- `classification/views.py` — import logging, logger.warning on review errors
-- `products/views.py` — import logging, logger.warning on parse errors
-- `products/services/import_service.py` — logger.exception on import failure
-- `.env.example` — SENTRY_DSN
-- `pyproject.toml` — python-json-logger + sentry-sdk optional dep
+- `pyproject.toml` — coverage config
+- `README.md` — testing section
 
 ---
 
-# Stage 13: NEXT
+# Stage 14: NEXT

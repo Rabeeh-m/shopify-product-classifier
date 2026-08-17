@@ -72,3 +72,25 @@ python manage.py load_taxonomy --source https://example.com/taxonomy.json
 ```
 
 The command is idempotent — running it multiple times will not create duplicates.
+
+## Testing
+
+```bash
+# Run the full test suite
+python manage.py test
+
+# Run with coverage
+coverage run --source=classification,products,core -m django test
+coverage report
+
+# Run a specific module
+python manage.py test classification.tests.test_classifier
+```
+
+### CI Checks
+
+Every push and pull request runs:
+- **Tests** with coverage (must be ≥90% on `classification/`, `products/`, `core/`)
+- **Linting** — `black`, `isort`, and `ruff` must pass
+
+CI uses SQLite for the database so no external services are required.
