@@ -1,11 +1,17 @@
-# Stage 7: Confidence Scoring & Classification Persistence — COMPLETE
+# Stage 8: Celery-based Async Classification Pipeline — COMPLETE
 
-Ready for Stage 8.
+Ready for Stage 9.
 
 ## Completed
-- `classification/services/confidence.py` — pure function combining AI self-reported confidence with data-completeness rules: title-only cap at 50, no-description cap at 65, no-image 5-point penalty (floor 30), mutually exclusive rules
-- `classification/services/persistence.py` — `save_classification()` wraps all writes in `transaction.atomic()`: creates/updates Classification row (category, confidence, alternatives, status), creates ClassificationAttribute rows with case-insensitive AttributeValue resolution or free_text_value fallback, mirrors status to Product.status
-- `CLASSIFICATION_CONFIDENCE_THRESHOLD` setting (default 70): above/at threshold → product.status='done'; below → product.status='needs_review'; Classification.status always='needs_review' (no auto-approval)
-- 15 confidence tests (full data, no description, title-only, no-image penalty, edge cases) — all pure, no DB
-- 16 persistence tests (resolve attribute, create classification, resolve values, free text fallback, threshold mapping, idempotency, rollback on failure, missing category)
-- 122 total tests passing, all linting clean
+- Celery + Redis + django-celery-results added to dependencies and configured
+- `config/celery.py` — standard Django integration (autodiscover_tasks, namespace=CELERY)
+- `config/__init__.py` — imports celery_app
+- `classification/tasks.py` — `process_product_batch` (ThreadPoolExecutor, per-product try/except, error collection + batch DB update in main thread) and `process_all_pending` (chunked dispatch with self-re-enqueue)
+- `products/models.py` — added `error_message` field + migration
+- `products/views.py` — triggers `process_all_pending.delay()` after successful import
+- `classification/views.py` + `classification/urls.py` — `GET /api/classification/jobs/status/` returning pending/processing/done/needs_review/failed counts
+- `config/urls.py` — wired classification URLs
+- `docker-compose.yml` — redis, web, celery worker services
+- `.env.example` — added CELERY_BROKER_URL, CELERY_RESULT_BACKEND
+- 15 new task tests (batch processing, failure isolation, idempotency, pipeline integration, import trigger)
+- 137 total tests passing, all linting clean

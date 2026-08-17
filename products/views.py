@@ -23,6 +23,10 @@ class ProductImportCreateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        from classification.tasks import process_all_pending
+
+        process_all_pending.delay()
+
         serializer = ProductImportSerializer(import_obj)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 

@@ -21,6 +21,7 @@ class Product(models.Model):
         default=Status.PENDING,
         db_index=True,
     )
+    error_message = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
