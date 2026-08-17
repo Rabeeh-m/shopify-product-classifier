@@ -97,3 +97,7 @@ ALLOWED_UPLOAD_EXTENSIONS = {".csv", ".xlsx"}
 CLASSIFICATION_CANDIDATE_LIMIT = int(
     os.environ.get("CLASSIFICATION_CANDIDATE_LIMIT", "15")
 )
+
+# AI classification settings
+AI_MODEL_NAME = os.environ.get("AI_MODEL_NAME", "claude-sonnet-4-20250514")
+AI_REQUEST_TIMEOUT = int(os.environ.get("AI_REQUEST_TIMEOUT", "30"))
