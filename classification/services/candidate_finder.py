@@ -3,8 +3,6 @@ from collections import namedtuple
 
 from django.conf import settings
 
-from taxonomy.models import Category
-
 # EXTENSION POINT: This module implements keyword/text-overlap scoring for
 # candidate narrowing. The public API (CandidateResult, find_candidates) can
 # be preserved exactly when swapping to embedding-based similarity search.
@@ -141,9 +139,10 @@ def find_candidates(product, categories=None, limit=None):
     Args:
         product: A Product instance (or any object with title, description,
             and product_type string attributes).
-        categories: Optional iterable of Category objects. If None, all
-            categories are fetched from the database. Pass a pre-loaded
-            queryset or list to avoid repeated DB hits.
+        categories: Optional iterable of Category objects. If None, the
+            full taxonomy is loaded from cache (one DB query per TTL expiry
+            rather than per product).  Pass a pre-loaded list to skip even
+            the cache lookup.
         limit: Max results. Defaults to settings.CLASSIFICATION_CANDIDATE_LIMIT.
 
     Returns:
@@ -154,7 +153,9 @@ def find_candidates(product, categories=None, limit=None):
         limit = settings.CLASSIFICATION_CANDIDATE_LIMIT
 
     if categories is None:
-        categories = Category.objects.all()
+        from taxonomy.services.cache import get_all_categories
+
+        categories = get_all_categories()
 
     product_tokens = _build_product_tokens(product)
     if not product_tokens:

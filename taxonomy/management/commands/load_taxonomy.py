@@ -265,3 +265,7 @@ class Command(BaseCommand):
 
         if dry_run:
             self.stdout.write(self.style.WARNING("(dry run — nothing was persisted)"))
+        else:
+            from taxonomy.services.cache import invalidate_taxonomy_cache
+
+            invalidate_taxonomy_cache()

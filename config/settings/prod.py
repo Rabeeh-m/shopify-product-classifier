@@ -32,3 +32,13 @@ CSRF_COOKIE_SECURE = True
 # Misc
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
+
+# --- Cache: Redis-backed ---
+
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/1")
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": REDIS_URL,
+    }
+}

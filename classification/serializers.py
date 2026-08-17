@@ -82,4 +82,26 @@ class ClassificationSerializer(serializers.ModelSerializer):
 
     def get_alternatives(self, obj):
         raw = obj.alternatives or []
+        if not raw:
+            return []
+
+        cat_ids = {
+            item.get("category_id") if isinstance(item, dict) else item.category_id
+            for item in raw
+            if item
+        }
+        if not cat_ids:
+            return []
+
+        # Use the context-provided cache (shared across all serializer instances
+        # in the same request). Only query DB for IDs not already cached.
+        ctx_cache = self.context.get("category_cache")
+        if ctx_cache is None:
+            ctx_cache = {}
+            self.context["category_cache"] = ctx_cache
+
+        missing = cat_ids - ctx_cache.keys()
+        if missing:
+            ctx_cache.update({c.id: c for c in Category.objects.filter(id__in=missing)})
+
         return AlternativeSerializer(raw, many=True, context=self.context).data

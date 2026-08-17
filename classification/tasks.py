@@ -67,6 +67,9 @@ def process_product_batch(self, product_ids):
     Each product is processed independently — a failure in one product is
     caught, logged, and does not prevent other products from completing.
 
+    Concurrency is capped by CLASSIFICATION_CONCURRENCY_LIMIT (default 5)
+    to avoid overwhelming the AI provider's rate limits.
+
     On success: product.status is set to 'done' or 'needs_review' by
     save_classification, and processing_started_at is cleared.
     On failure: product.status = 'failed', product.error_message stores
@@ -74,6 +77,8 @@ def process_product_batch(self, product_ids):
     reaches CLASSIFICATION_MAX_RETRIES the product stays in 'failed'
     permanently.
     """
+    concurrency_limit = getattr(settings, "CLASSIFICATION_CONCURRENCY_LIMIT", 5)
+
     products = list(
         Product.objects.filter(id__in=product_ids, status__in=["pending", "processing"])
     )
@@ -85,7 +90,9 @@ def process_product_batch(self, product_ids):
 
     failed_ids = []
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=concurrency_limit
+    ) as executor:
         futures = {executor.submit(_run_pipeline_safe, p): p for p in products}
         for future in concurrent.futures.as_completed(futures):
             product_id, error = future.result()
@@ -102,29 +109,44 @@ def process_product_batch(self, product_ids):
 
     if failed_ids:
         errors_by_id = {fid: err for fid, err in failed_ids}
-        for pid in errors_by_id:
-            product = Product.objects.get(id=pid)
+
+        # Bulk-load failed products to avoid N+1 on the error path.
+        failed_products = {
+            p.id: p for p in Product.objects.filter(id__in=list(errors_by_id.keys()))
+        }
+
+        batch_requeue = []
+        batch_fail = []
+
+        for pid, error_text in errors_by_id.items():
+            product = failed_products[pid]
             new_retry_count = product.retry_count + 1
             if new_retry_count >= max_retries:
-                Product.objects.filter(id=pid).update(
-                    status=Product.Status.FAILED,
-                    error_message=errors_by_id[pid],
-                    retry_count=new_retry_count,
-                    processing_started_at=None,
+                batch_fail.append(
+                    Product(
+                        id=pid,
+                        status=Product.Status.FAILED,
+                        error_message=error_text,
+                        retry_count=new_retry_count,
+                        processing_started_at=None,
+                    )
                 )
                 logger.error(
                     "Product %d (%s) permanently failed after %d retries: %s",
                     pid,
                     product.title,
                     new_retry_count,
-                    errors_by_id[pid],
+                    error_text,
                 )
             else:
-                Product.objects.filter(id=pid).update(
-                    status=Product.Status.PENDING,
-                    error_message=errors_by_id[pid],
-                    retry_count=new_retry_count,
-                    processing_started_at=None,
+                batch_requeue.append(
+                    Product(
+                        id=pid,
+                        status=Product.Status.PENDING,
+                        error_message=error_text,
+                        retry_count=new_retry_count,
+                        processing_started_at=None,
+                    )
                 )
                 logger.warning(
                     "Product %d (%s) requeued (retry %d/%d): %s",
@@ -132,8 +154,21 @@ def process_product_batch(self, product_ids):
                     product.title,
                     new_retry_count,
                     max_retries,
-                    errors_by_id[pid],
+                    error_text,
                 )
+
+        # Bulk update using bulk_update (each item is a different status,
+        # so we group them).
+        if batch_requeue:
+            Product.objects.bulk_update(
+                batch_requeue,
+                ["status", "error_message", "retry_count", "processing_started_at"],
+            )
+        if batch_fail:
+            Product.objects.bulk_update(
+                batch_fail,
+                ["status", "error_message", "retry_count", "processing_started_at"],
+            )
 
     logger.info(
         "Batch processing complete: %d products processed, %d failed",

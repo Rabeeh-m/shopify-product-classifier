@@ -17,6 +17,7 @@ from classification.services.review_service import (
     correct_classification,
 )
 from products.models import Product
+from taxonomy.models import Category
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,20 @@ class ClassificationJobStatusView(APIView):
 class ReviewListView(APIView):
     permission_classes = [IsAuthenticated]
 
+    def _collect_alt_cat_ids(self, classifications):
+        """Gather all unique category_ids referenced in alternatives across a page."""
+        cat_ids = set()
+        for cls in classifications:
+            for item in cls.alternatives or []:
+                cid = (
+                    item.get("category_id")
+                    if isinstance(item, dict)
+                    else getattr(item, "category_id", None)
+                )
+                if cid is not None:
+                    cat_ids.add(cid)
+        return cat_ids
+
     def get(self, request):
         qs = Classification.objects.select_related(
             "product", "category", "reviewed_by"
@@ -98,9 +113,15 @@ class ReviewListView(APIView):
 
         page = self.paginate_queryset(qs)
         if page is not None:
-            serializer = ClassificationSerializer(
-                page, many=True, context={"request": request}
+            # Bulk-load all alternative categories for the whole page in one query.
+            cat_ids = self._collect_alt_cat_ids(page)
+            alt_cache = (
+                {c.id: c for c in Category.objects.filter(id__in=cat_ids)}
+                if cat_ids
+                else {}
             )
+            ctx = {"request": request, "category_cache": alt_cache}
+            serializer = ClassificationSerializer(page, many=True, context=ctx)
             return self.get_paginated_response(serializer.data)
 
         serializer = ClassificationSerializer(

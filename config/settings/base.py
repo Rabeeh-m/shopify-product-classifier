@@ -109,6 +109,12 @@ CLASSIFICATION_CONFIDENCE_THRESHOLD = int(
     os.environ.get("CLASSIFICATION_CONFIDENCE_THRESHOLD", "70")
 )
 CLASSIFICATION_MAX_RETRIES = int(os.environ.get("CLASSIFICATION_MAX_RETRIES", "3"))
+CLASSIFICATION_CONCURRENCY_LIMIT = int(
+    os.environ.get("CLASSIFICATION_CONCURRENCY_LIMIT", "5")
+)
+
+# Taxonomy cache TTL (seconds) — taxonomy changes rarely, cache aggressively.
+TAXONOMY_CACHE_TTL = int(os.environ.get("TAXONOMY_CACHE_TTL", "3600"))
 
 # Celery settings
 CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
@@ -119,6 +125,14 @@ CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 
 INSTALLED_APPS += ["django_celery_results"]  # noqa: F405
+
+# Cache — Redis-backed in production, LocMemCache in dev/test.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "classification-cache",
+    }
+}
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
