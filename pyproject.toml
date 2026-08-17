@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "shopify-product-classifier"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "Django>=5.1,<5.2",
+    "djangorestframework>=3.17,<3.19",
+    "python-dotenv>=1.0,<2.0",
+    "mysqlclient>=2.2,<3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "django-debug-toolbar>=4.4,<5.0",
+    "black>=24.0,<27.0",
+    "isort>=5.12,<9.0",
+    "ruff>=0.4,<1.0",
+    "pre-commit>=3.5,<5.0",
+]
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+[tool.isort]
+profile = "black"
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
