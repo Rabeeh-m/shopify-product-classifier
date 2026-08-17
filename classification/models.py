@@ -36,6 +36,7 @@ class Classification(models.Model):
         related_name="classifications_reviewed",
     )
     reviewed_at = models.DateTimeField(null=True, blank=True)
+    correction_notes = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
