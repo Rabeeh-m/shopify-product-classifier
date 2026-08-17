@@ -4,6 +4,21 @@ A Django-based backend for classifying Shopify products using machine learning. 
 
 ## Local Setup
 
+### Prerequisites
+
+- Python 3.11+
+- MariaDB 10.6+ (or MySQL 8.0+)
+- `libmariadb-dev` / `libmariadb-dev-compat` (for `mysqlclient`)
+
+### Database Setup
+
+```bash
+# Create the database
+mysql -u root -e "CREATE DATABASE shopify_product_classifier CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+```
+
+### Application Setup
+
 ```bash
 # Clone the repo and enter the directory
 git clone <repo-url> && cd shopify-product-classifier
