@@ -2,6 +2,7 @@ import csv
 import io
 import logging
 import os
+import re
 
 from django.conf import settings
 from django.db import transaction
@@ -16,11 +17,32 @@ OPTIONAL_COLUMNS = {"description", "brand", "product_type", "image_urls"}
 ALL_COLUMNS = REQUIRED_COLUMNS | OPTIONAL_COLUMNS
 IMAGE_SEPARATORS = [",", "|"]
 
+# MIME types we accept per extension — used as a secondary check after extension.
+_MIME_TYPES = {
+    ".csv": {"text/csv", "application/vnd.ms-excel", "application/octet-stream"},
+    ".xlsx": {
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/zip",
+        "application/octet-stream",
+    },
+}
+
 
 class ParseError(Exception):
     def __init__(self, errors):
         self.errors = errors
         super().__init__(f"Parse failed: {'; '.join(errors)}")
+
+
+def _sanitize_filename(filename):
+    """Strip path components and dangerous characters from the filename.
+
+    Only allows alphanumeric, hyphens, underscores, and dots.
+    """
+    basename = os.path.basename(filename or "upload")
+    basename = re.sub(r"[^\w.\-]", "_", basename)
+    basename = re.sub(r"_+", "_", basename).strip("_.")
+    return basename or "upload"
 
 
 def _normalize_header(col):
@@ -30,6 +52,13 @@ def _normalize_header(col):
 
 
 def _validate_file(file_obj, filename):
+    """Validate file extension, MIME type, and size.
+
+    Checks:
+    1. Extension is in ALLOWED_UPLOAD_EXTENSIONS.
+    2. Declared content_type matches the expected MIME set for that extension.
+    3. File size is within MAX_UPLOAD_SIZE_MB.
+    """
     ext = os.path.splitext(filename)[1].lower()
     if ext not in settings.ALLOWED_UPLOAD_EXTENSIONS:
         raise ParseError(
@@ -38,6 +67,17 @@ def _validate_file(file_obj, filename):
                 f"Allowed: {', '.join(sorted(settings.ALLOWED_UPLOAD_EXTENSIONS))}"
             ]
         )
+
+    content_type = getattr(file_obj, "content_type", None)
+    if content_type and ext in _MIME_TYPES:
+        if content_type not in _MIME_TYPES[ext]:
+            raise ParseError(
+                [
+                    f"Unexpected content type '{content_type}' for a {ext} file. "
+                    f"Expected one of: {', '.join(sorted(_MIME_TYPES[ext]))}"
+                ]
+            )
+
     max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
     file_obj.seek(0, os.SEEK_END)
     size = file_obj.tell()
@@ -62,7 +102,10 @@ def _read_csv(file_obj):
 def _read_xlsx(file_obj):
     from openpyxl import load_workbook
 
-    wb = load_workbook(file_obj, read_only=True, data_only=True)
+    try:
+        wb = load_workbook(file_obj, read_only=True, data_only=True)
+    except Exception as exc:
+        raise ParseError([f"File is not a valid Excel (.xlsx) file: {exc}"]) from exc
     ws = wb.active
     rows_iter = ws.iter_rows(values_only=True)
     raw_headers = next(rows_iter, [])

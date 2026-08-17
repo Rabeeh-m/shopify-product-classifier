@@ -1,7 +1,7 @@
 import logging
 
 from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class ProductImportCreateView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         upload = request.FILES.get("file")
@@ -40,7 +40,7 @@ class ProductImportCreateView(APIView):
 
 
 class ProductImportDetailView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
         try:

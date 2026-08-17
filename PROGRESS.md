@@ -1,37 +1,61 @@
-# Stage 13: DONE
+# Stage 14: DONE
 
-Expanded test coverage, end-to-end integration tests, and CI setup.
+Security audit and remediation pass.
 
 ## Changes
-- Added 44 new tests across 8 new test modules (232 total, up from 188)
-- Coverage on classification/products/core: 97% (up from 96%), overall: 98%
-- Created `tests/test_end_to_end.py`: full import -> classify (mocked AI) -> review -> approve flow
-- Created `classification/tests/test_ai_client.py`: retry logic, missing key, error types
-- Created `classification/tests/test_views_extra.py`: LoginView, JobStatusView, ReviewList unpaged
-- Created `classification/tests/test_review_service_extra.py`: error branches, correction_notes builder
-- Created `classification/tests/test_serializers_extra.py`: ProductMinimal, Alternative cache, ClassificationAttribute
-- Created `classification/tests/test_models_extra.py`: __str__ methods for all models
-- Created `products/tests/test_import_extra.py`: file size, empty headers, image separators
-- Created `products/tests/test_tasks.py`: Celery beat task wrapper
-- Added coverage config to `pyproject.toml` (fail-under=90)
-- Created `.github/workflows/test.yml`: CI with lint + test jobs
-- Added Testing section to README.md
+
+### Upload hardening (`products/services/import_service.py`)
+- Added MIME-type secondary validation for `.csv` and `.xlsx` uploads
+- Added `_sanitize_filename()` to strip path traversal and dangerous chars before DB storage
+- Wrapped `_read_xlsx()` in try/except to catch `BadZipFile` (fake xlsx uploads)
+
+### Endpoint permissions (`products/views.py`, `classification/views.py`)
+- Changed `ProductImportCreateView` and `ProductImportDetailView` from `AllowAny` → `IsAuthenticated`
+- Added `LoginThrottle` (10/min anon) to `LoginView`
+- Added `ReviewWriteThrottle` (30/min user) to `ReviewApproveView` and `ReviewCorrectView`
+
+### Global throttling (`config/settings/base.py`)
+- Added `DEFAULT_THROTTLE_CLASSES`: `AnonRateThrottle` (60/min), `UserRateThrottle` (120/min)
+- Global throttle exceptions already handled by custom exception handler (returns 429 + `THROTTLED` code)
+
+### Production hardening (`config/settings/prod.py`)
+- `SECURE_HSTS_SECONDS` = 31536000 (1 year), with subdomains + preload
+- `SECURE_SSL_REDIRECT` = True (configurable via env)
+- `SECURE_PROXY_SSL_HEADER` = `("HTTP_X_FORWARDED_PROTO", "https")`
+- `SESSION_COOKIE_SECURE` = True, `CSRF_COOKIE_SECURE` = True
+- `SECURE_CONTENT_TYPE_NOSNIFF` = True, `X_FRAME_OPTIONS` = "DENY"
+
+### Security tests (`products/tests/test_security.py`)
+- `UploadMimeTypeTest`: CSV accepted, .txt rejected, fake xlsx rejected, exe-as-csv rejected
+- `UnauthenticatedAccessTest`: all protected endpoints return 401/403, public endpoints accessible
+- `ThrottleResponseTest`: throttle 429 returns correct `{"error": {"code": "THROTTLED"}}` envelope
+
+### Documentation
+- Created `docs/security.md` with full audit checklist, permission matrix, throttle rates,
+  prod settings table, CORS config, AI data-sharing inventory, and dependency status
+
+### Test fixes
+- Updated `products/tests/test_import.py`: added user authentication to `ProductImportAPITest`
+- Updated `classification/tests/test_tasks.py`: added `force_authenticate` to `ImportTriggerTest`
+- Updated 401→403 assertions where DRF `SessionAuthentication` returns 403 (CSRF context)
 
 ## Files Created
-- `.github/workflows/test.yml`
-- `tests/__init__.py`, `tests/test_end_to_end.py`
-- `classification/tests/test_ai_client.py`
-- `classification/tests/test_views_extra.py`
-- `classification/tests/test_review_service_extra.py`
-- `classification/tests/test_serializers_extra.py`
-- `classification/tests/test_models_extra.py`
-- `products/tests/test_import_extra.py`
-- `products/tests/test_tasks.py`
+- `products/tests/test_security.py`
+- `docs/security.md`
 
 ## Files Modified
-- `pyproject.toml` — coverage config
-- `README.md` — testing section
+- `products/services/import_service.py` — MIME validation, filename sanitization, xlsx error handling
+- `products/views.py` — `IsAuthenticated` on import endpoints
+- `classification/views.py` — LoginThrottle, ReviewWriteThrottle
+- `config/settings/base.py` — global throttle classes + rates
+- `config/settings/prod.py` — full production security hardening
+- `products/tests/test_import.py` — added user auth to API tests
+- `classification/tests/test_tasks.py` — added force_authenticate to ImportTriggerTest
+
+## Test Status
+- 246 tests, 0 failures
+- New tests added: 14 (10 auth, 3 upload MIME, 1 throttle)
 
 ---
 
-# Stage 14: NEXT
+# Stage 15: NEXT
