@@ -61,9 +61,10 @@ class ProcessProductBatchTest(TestCase):
 
         p1.refresh_from_db()
         p2.refresh_from_db()
-        self.assertEqual(p1.status, "failed")
+        self.assertEqual(p1.status, "pending")
         self.assertIn("boom", p1.error_message)
-        self.assertEqual(p2.status, "pending")
+        self.assertEqual(p1.retry_count, 1)
+        self.assertEqual(p2.status, "processing")
 
     @patch("classification.tasks._run_pipeline")
     def test_success_does_not_mark_failed(self, mock_pipeline):
@@ -72,7 +73,7 @@ class ProcessProductBatchTest(TestCase):
 
         process_product_batch([product.id])
         product.refresh_from_db()
-        self.assertEqual(product.status, "pending")
+        self.assertEqual(product.status, "processing")
 
     @patch("classification.tasks._run_pipeline")
     def test_idempotent_on_done_product(self, mock_pipeline):

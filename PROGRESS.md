@@ -1,17 +1,15 @@
-# Stage 8: Celery-based Async Classification Pipeline — COMPLETE
+# Stage 9: Stuck-Product Recovery & Retry Limiting — COMPLETE
 
-Ready for Stage 9.
+Ready for Stage 10.
 
 ## Completed
-- Celery + Redis + django-celery-results added to dependencies and configured
-- `config/celery.py` — standard Django integration (autodiscover_tasks, namespace=CELERY)
-- `config/__init__.py` — imports celery_app
-- `classification/tasks.py` — `process_product_batch` (ThreadPoolExecutor, per-product try/except, error collection + batch DB update in main thread) and `process_all_pending` (chunked dispatch with self-re-enqueue)
-- `products/models.py` — added `error_message` field + migration
-- `products/views.py` — triggers `process_all_pending.delay()` after successful import
-- `classification/views.py` + `classification/urls.py` — `GET /api/classification/jobs/status/` returning pending/processing/done/needs_review/failed counts
-- `config/urls.py` — wired classification URLs
-- `docker-compose.yml` — redis, web, celery worker services
-- `.env.example` — added CELERY_BROKER_URL, CELERY_RESULT_BACKEND
-- 15 new task tests (batch processing, failure isolation, idempotency, pipeline integration, import trigger)
-- 137 total tests passing, all linting clean
+- `products/models.py` — added `processing_started_at` (DateTimeField, nullable) and `retry_count` (PositiveIntegerField, default=0)
+- `products/migrations/0004_add_processing_tracking_fields.py` — migration for new fields
+- `config/settings/base.py` — `CLASSIFICATION_MAX_RETRIES = 3` setting
+- `classification/tasks.py` — `_mark_processing()` sets status='processing' + timestamp; retry logic increments retry_count, requeues below max, permanently fails at/above max; clears `processing_started_at` on success
+- `products/management/commands/requeue_stuck_products.py` — finds stuck 'processing' products (>30 min), uses `select_for_update(skip_locked=True)`, respects retry_count/max_retries
+- `products/tasks.py` — `requeue_stuck_products_task` Celery task wrapping the management command
+- `config/celery.py` — beat schedule runs `requeue_stuck_products_task` every 15 minutes
+- `docs/runbook.md` — "Recovering from a stopped batch" operational guide
+- 15 new Stage 9 tests (processing status, retry logic, permanent failure, stuck recovery, crash end-to-end)
+- 152 total tests passing, all linting clean

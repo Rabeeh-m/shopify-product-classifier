@@ -104,6 +104,7 @@ AI_REQUEST_TIMEOUT = int(os.environ.get("AI_REQUEST_TIMEOUT", "30"))
 CLASSIFICATION_CONFIDENCE_THRESHOLD = int(
     os.environ.get("CLASSIFICATION_CONFIDENCE_THRESHOLD", "70")
 )
+CLASSIFICATION_MAX_RETRIES = int(os.environ.get("CLASSIFICATION_MAX_RETRIES", "3"))
 
 # Celery settings
 CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")

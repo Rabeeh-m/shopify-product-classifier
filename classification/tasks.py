@@ -2,12 +2,29 @@ import concurrent.futures
 import logging
 
 from celery import shared_task
+from django.conf import settings
+from django.utils import timezone as tz
 
 from products.models import Product
 
 logger = logging.getLogger(__name__)
 
 _MAX_WORKERS = 5
+
+
+def _mark_processing(product_ids):
+    """Atomically set status='processing' and processing_started_at for a batch.
+
+    Uses update() to avoid race conditions when multiple workers pick up
+    the same batch (though Celery should prevent this, it's defensive).
+    """
+    now = tz.now()
+    Product.objects.filter(
+        id__in=product_ids, status__in=["pending", "processing"]
+    ).update(
+        status=Product.Status.PROCESSING,
+        processing_started_at=now,
+    )
 
 
 def _run_pipeline(product):
@@ -51,9 +68,11 @@ def process_product_batch(self, product_ids):
     caught, logged, and does not prevent other products from completing.
 
     On success: product.status is set to 'done' or 'needs_review' by
-    save_classification.
+    save_classification, and processing_started_at is cleared.
     On failure: product.status = 'failed', product.error_message stores
-    the exception text.
+    the exception text, and retry_count is incremented.  If retry_count
+    reaches CLASSIFICATION_MAX_RETRIES the product stays in 'failed'
+    permanently.
     """
     products = list(
         Product.objects.filter(id__in=product_ids, status__in=["pending", "processing"])
@@ -61,6 +80,8 @@ def process_product_batch(self, product_ids):
 
     if not products:
         return {"processed": 0}
+
+    _mark_processing([p.id for p in products])
 
     failed_ids = []
 
@@ -71,21 +92,48 @@ def process_product_batch(self, product_ids):
             if error is not None:
                 failed_ids.append((product_id, error))
 
+    failed_set = {fid for fid, _ in failed_ids}
+    succeeded_ids = [p.id for p in products if p.id not in failed_set]
+
+    if succeeded_ids:
+        Product.objects.filter(id__in=succeeded_ids).update(processing_started_at=None)
+
+    max_retries = getattr(settings, "CLASSIFICATION_MAX_RETRIES", 3)
+
     if failed_ids:
-        ids_to_fail = [fid for fid, _ in failed_ids]
         errors_by_id = {fid: err for fid, err in failed_ids}
-        for pid in ids_to_fail:
-            Product.objects.filter(id=pid).update(
-                status=Product.Status.FAILED,
-                error_message=errors_by_id[pid],
-            )
+        for pid in errors_by_id:
             product = Product.objects.get(id=pid)
-            logger.exception(
-                "Classification failed for product %d (%s): %s",
-                pid,
-                product.title,
-                errors_by_id[pid],
-            )
+            new_retry_count = product.retry_count + 1
+            if new_retry_count >= max_retries:
+                Product.objects.filter(id=pid).update(
+                    status=Product.Status.FAILED,
+                    error_message=errors_by_id[pid],
+                    retry_count=new_retry_count,
+                    processing_started_at=None,
+                )
+                logger.error(
+                    "Product %d (%s) permanently failed after %d retries: %s",
+                    pid,
+                    product.title,
+                    new_retry_count,
+                    errors_by_id[pid],
+                )
+            else:
+                Product.objects.filter(id=pid).update(
+                    status=Product.Status.PENDING,
+                    error_message=errors_by_id[pid],
+                    retry_count=new_retry_count,
+                    processing_started_at=None,
+                )
+                logger.warning(
+                    "Product %d (%s) requeued (retry %d/%d): %s",
+                    pid,
+                    product.title,
+                    new_retry_count,
+                    max_retries,
+                    errors_by_id[pid],
+                )
 
     logger.info(
         "Batch processing complete: %d products processed, %d failed",

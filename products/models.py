@@ -22,6 +22,8 @@ class Product(models.Model):
         db_index=True,
     )
     error_message = models.TextField(blank=True, default="")
+    processing_started_at = models.DateTimeField(null=True, blank=True)
+    retry_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
