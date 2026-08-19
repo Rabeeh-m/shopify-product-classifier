@@ -1,5 +1,7 @@
 # Security Audit — Shopify Product Classifier
 
+> Cross-references: [README.md](../README.md) | [Runbook](runbook.md) | [API](api.md) | [Architecture](architecture.md)
+
 ## Audit Date
 Stage 14 — August 2026
 

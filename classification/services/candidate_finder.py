@@ -11,6 +11,12 @@ from django.conf import settings
 # type, requiring no changes to callers.
 
 CandidateResult = namedtuple("CandidateResult", ["category", "score"])
+"""A scored category candidate returned by find_candidates.
+
+Fields:
+    category: A Category model instance.
+    score: A float representing keyword-overlap relevance.
+"""
 
 _STOP_WORDS = frozenset(
     {

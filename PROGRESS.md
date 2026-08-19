@@ -77,4 +77,79 @@ Performance optimization — N+1 query fixes, taxonomy caching, concurrency tuni
 
 ---
 
-# Stage 16: NEXT
+# Stage 16: DONE
+
+Documentation consolidation — README rewrite, architecture docs, API reference, decisions log, env var audit, service docstrings.
+
+## Changes
+
+### README.md (rewrite)
+- Complete rewrite as single entry point for new developers
+- Added table of contents with cross-links to all docs
+- Architecture summary paragraph with link to docs/architecture.md
+- Step-by-step local setup (10 steps, correct order: venv → deps → env → Redis → migrate → taxonomy → superuser → server → worker → optional frontend/beat)
+- Accurate for dev settings (SQLite, no MariaDB needed locally)
+- Configuration table with all key env vars
+- Troubleshooting section covering the most common setup issues
+- API quick-reference table
+
+### docs/architecture.md (new)
+- High-level component diagram (Django, Celery, Redis, Anthropic, DB)
+- Data flow diagram from import through classification to persistence
+- Low-level architecture: Django apps, Celery config, taxonomy caching, settings structure, key models
+- Classification pipeline services described in sequence
+
+### docs/api.md (new)
+- All 10 endpoints documented from actual DRF views/serializers
+- Method, path, auth requirement, request/response shape for each
+- Working curl examples for every endpoint
+- Rate limiting, authentication, and pagination sections
+- Error format documented
+
+### docs/decisions.md (new)
+- 6 Architecture Decision Records: MariaDB over Postgres, Celery+Redis, two-stage pipeline, thread pool concurrency, taxonomy caching, SQLite in dev
+
+### .env.example (audit)
+- Added 8 missing env vars: CLASSIFICATION_CANDIDATE_LIMIT, CLASSIFICATION_CONFIDENCE_THRESHOLD, CLASSIFICATION_MAX_RETRIES, CLASSIFICATION_CONCURRENCY_LIMIT, TAXONOMY_CACHE_TTL, SECURE_HSTS_SECONDS, SECURE_SSL_REDIRECT, REDIS_URL
+- Removed stale MEDIA_ROOT (not referenced via os.environ)
+- Added commented-out prod-only section for SECURE_HSTS_SECONDS, SECURE_SSL_REDIRECT, REDIS_URL
+
+### docs/runbook.md (consolidation)
+- Added cross-reference header linking to README, security, API, architecture
+
+### docs/security.md (consolidation)
+- Added cross-reference header linking to README, runbook, API, architecture
+
+### Service Docstrings
+- `products/services/import_service.py` — added docstrings to ParseError, import_products, _normalize_header, _read_csv, _read_xlsx, _parse_image_urls, _validate_headers, _create_products
+- `classification/services/review_service.py` — added docstring to ReviewError
+- `classification/services/candidate_finder.py` — added docstring to CandidateResult
+- `taxonomy/services/cache.py` — added docstring to get_ttl
+
+## Verification
+- All 254 tests pass, 0 failures
+- ruff, black, isort all pass on modified files
+- All 24 env vars from codebase accounted for in .env.example
+- No stale env vars in .env.example
+
+## Files Created
+- `docs/architecture.md`
+- `docs/api.md`
+- `docs/decisions.md`
+
+## Files Modified
+- `README.md` (full rewrite)
+- `.env.example` (audit/complete)
+- `docs/runbook.md` (cross-reference header)
+- `docs/security.md` (cross-reference header)
+- `products/services/import_service.py` (docstrings)
+- `classification/services/review_service.py` (docstring)
+- `classification/services/candidate_finder.py` (docstring)
+- `taxonomy/services/cache.py` (docstring)
+
+## Test Status
+- 254 tests, 0 failures
+
+---
+
+# Stage 17: NEXT

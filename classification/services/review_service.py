@@ -10,6 +10,11 @@ logger = logging.getLogger(__name__)
 
 
 class ReviewError(Exception):
+    """Raised when a review operation (approve/correct) fails.
+
+    Covers invalid state transitions and taxonomy validation errors.
+    """
+
     pass
 
 

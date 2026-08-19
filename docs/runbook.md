@@ -1,4 +1,6 @@
-# Recovering from a stopped batch
+# Runbook — Batch Recovery and Stuck Products
+
+> Cross-references: [README.md](../README.md) | [Security](security.md) | [API](api.md) | [Architecture](architecture.md)
 
 If the Celery worker crashes, gets killed, or is restarted during a
 classification run, some products may be stuck in "processing" status.

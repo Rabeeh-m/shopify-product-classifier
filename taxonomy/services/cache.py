@@ -20,6 +20,7 @@ CACHE_KEY = "taxonomy:all_categories"
 
 
 def get_ttl():
+    """Return the taxonomy cache TTL in seconds from settings."""
     return getattr(settings, "TAXONOMY_CACHE_TTL", 3600)
 
 

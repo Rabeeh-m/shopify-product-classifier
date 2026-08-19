@@ -29,6 +29,12 @@ _MIME_TYPES = {
 
 
 class ParseError(Exception):
+    """Raised when file parsing or validation fails during product import.
+
+    Stores the list of individual error messages so the API can return
+    them to the caller without losing detail.
+    """
+
     def __init__(self, errors):
         self.errors = errors
         super().__init__(f"Parse failed: {'; '.join(errors)}")
@@ -46,6 +52,10 @@ def _sanitize_filename(filename):
 
 
 def _normalize_header(col):
+    """Lowercase, strip whitespace, and replace spaces with underscores.
+
+    Handles None input by returning an empty string.
+    """
     if col is None:
         return ""
     return col.strip().lower().replace(" ", "_")
@@ -89,6 +99,10 @@ def _validate_file(file_obj, filename):
 
 
 def _read_csv(file_obj):
+    """Read a CSV file and return (headers, rows) with normalized headers.
+
+    Uses utf-8-sig encoding to handle BOM-prefixed files from Excel exports.
+    """
     text = file_obj.read().decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(text))
     headers = [_normalize_header(h) for h in reader.fieldnames or []]
@@ -100,6 +114,10 @@ def _read_csv(file_obj):
 
 
 def _read_xlsx(file_obj):
+    """Read an Excel .xlsx file and return (headers, rows) with normalized headers.
+
+    Uses openpyxl in read-only mode for memory efficiency with large files.
+    """
     from openpyxl import load_workbook
 
     try:
@@ -122,6 +140,11 @@ def _read_xlsx(file_obj):
 
 
 def _parse_image_urls(raw_value):
+    """Parse a raw image URLs string into a list of individual URLs.
+
+    Supports comma-separated and pipe-separated URLs. Returns an empty
+    list for empty or whitespace-only input.
+    """
     if not raw_value or not str(raw_value).strip():
         return []
     text = str(raw_value).strip()
@@ -132,6 +155,10 @@ def _parse_image_urls(raw_value):
 
 
 def _validate_headers(headers):
+    """Check that required columns are present and log unknown columns.
+
+    Returns a list of error strings (empty if all required columns exist).
+    """
     errors = []
     normalized = set(headers)
     missing = REQUIRED_COLUMNS - normalized
@@ -144,6 +171,12 @@ def _validate_headers(headers):
 
 
 def _create_products(rows, import_obj):
+    """Create Product and ProductImage objects from parsed rows.
+
+    Each product is created in its own transaction so a failure on one
+    row doesn't roll back previously created products. Returns a tuple
+    of (imported_count, failed_count, error_list).
+    """
     imported = 0
     failed = 0
     errors = []
@@ -172,6 +205,13 @@ def _create_products(rows, import_obj):
 
 
 def import_products(file_obj, filename):
+    """Validate, parse, and import products from a CSV or XLSX file.
+
+    Creates a ProductImport record to track progress. Products with a
+    missing title are counted as failures but don't halt the import.
+    Raises ParseError on validation or header errors before any products
+    are created.
+    """
     _validate_file(file_obj, filename)
     file_obj.seek(0)
     ext = os.path.splitext(filename)[1].lower()
