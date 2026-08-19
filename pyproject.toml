@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "shopify-product-classifier"
@@ -9,6 +9,7 @@ requires-python = ">=3.11"
 dependencies = [
     "Django>=5.1,<5.2",
     "djangorestframework>=3.17,<3.19",
+    "django-cors-headers>=4.4,<5.0",
     "python-dotenv>=1.0,<2.0",
     "mysqlclient>=2.2,<3.0",
     "openpyxl>=3.1,<4.0",
@@ -17,6 +18,7 @@ dependencies = [
     "redis>=5.0,<6.0",
     "django-celery-results>=2.5,<3.0",
     "python-json-logger>=3.3,<4.0",
+    "gunicorn>=22.0,<24.0",
 ]
 
 [project.optional-dependencies]
@@ -30,6 +32,10 @@ dev = [
 monitoring = [
     "sentry-sdk>=2.14,<3.0",
 ]
+
+[tool.setuptools.packages.find]
+include = ["config*", "core*", "products*", "taxonomy*", "classification*"]
+exclude = ["frontend*", "tests*", "docs*"]
 
 [tool.black]
 line-length = 88

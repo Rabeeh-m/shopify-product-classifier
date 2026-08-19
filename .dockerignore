@@ -1,0 +1,47 @@
+# Version control
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+.ruff_cache/
+
+# Environment
+.env
+
+# Django
+db.sqlite3
+db.sqlite3-journal
+media/
+
+# Coverage / test artifacts
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+.ruff_cache/
+
+# Frontend (built separately)
+frontend/node_modules/
+frontend/dist/
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# CI/CD
+.github/
+
+# Dev tooling
+.pre-commit-config.yaml
+profile_stage15.py

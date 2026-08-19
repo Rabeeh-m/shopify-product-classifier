@@ -42,3 +42,17 @@ CACHES = {
         "LOCATION": REDIS_URL,
     }
 }
+
+# --- Static & media files ---
+
+STATIC_ROOT = BASE_DIR / "staticfiles"  # noqa: F405
+
+# Media files: stored on disk by default. For multi-replica or cloud
+# deployments, override MEDIA_ROOT to point at a shared volume or
+# object-storage mount (e.g. S3 via django-storages).
+MEDIA_ROOT = BASE_DIR / "media"  # noqa: F405
+
+# Gunicorn settings (configurable via env vars)
+GUNICORN_WORKERS = int(os.environ.get("GUNICORN_WORKERS", "4"))
+GUNICORN_TIMEOUT = int(os.environ.get("GUNICORN_TIMEOUT", "120"))
+GUNICORN_BIND = os.environ.get("GUNICORN_BIND", "0.0.0.0:8000")
