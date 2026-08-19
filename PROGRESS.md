@@ -1,240 +1,53 @@
-# Stage 15: DONE
+# Stage 18: DONE — Project Complete (v1.0.0)
 
-Performance optimization — N+1 query fixes, taxonomy caching, concurrency tuning, query count regression tests.
-
-## Changes
-
-### N+1 Query Fix — Review List (`classification/views.py`, `classification/serializers.py`)
-- View now bulk-loads all unique alternative category IDs for the entire page in one query
-- `CategoryCache` shared via DRF context dict across all serializer instances
-- `AlternativeSerializer.get_category()` checks the context cache before hitting DB
-- **Result:** 29 queries → 5 queries (83% reduction) for a 25-item page
-
-### Taxonomy Caching (`taxonomy/services/cache.py`)
-- Created `get_all_categories()` — Redis-backed (prod) / LocMem (dev) cache with configurable TTL
-- `invalidate_taxonomy_cache()` — explicit invalidation called by `load_taxonomy` after successful non-dry-run load
-- Candidate finder now uses cached taxonomy: 10 DB queries → 0 (after warm)
-- `TAXONOMY_CACHE_TTL` setting (default 3600s)
-
-### Candidate Finder (`classification/services/candidate_finder.py`)
-- Removed direct `Category.objects.all()` query — now imports `get_all_categories()` from cache module
-- Accepts pre-loaded categories list to skip even the cache lookup
-- Zero DB queries when taxonomy cache is warm
-
-### Concurrency Tuning (`classification/tasks.py`)
-- Added `CLASSIFICATION_CONCURRENCY_LIMIT` setting (env var, default 5)
-- `process_product_batch` ThreadPoolExecutor now uses this limit instead of hardcoded `_MAX_WORKERS=5`
-- Failed product status updates now use `bulk_update()` instead of per-product `save()` — fewer DB round-trips
-
-### Database Index (`classification/models.py`, `classification/migrations/0003_...`)
-- Added composite index `idx_cls_status_created` on `(status, -created_at)` for review list query pattern
-
-### CACHES Configuration
-- `config/settings/base.py`: LocMemCache default
-- `config/settings/prod.py`: Redis-backed cache via `REDIS_URL` env var
-
-### Settings
-- `CLASSIFICATION_CONCURRENCY_LIMIT` (env var, default 5)
-- `TAXONOMY_CACHE_TTL` (env var, default 3600)
-- `CACHES` dict added to base + prod settings
-
-### Performance Tests (`classification/tests/test_query_performance.py`)
-- `ReviewListQueryCountTest` — assertNumQueries(5) for 25-item review list
-- `CandidateFinderQueryCountTest` — assertNumQueries(0) for cached candidate lookup
-- `TaxonomyCacheInvalidationTest` — cache invalidation + repopulation verified
-
-### Concurrency Tests (`classification/tests/test_concurrency.py`)
-- `test_all_products_processed` — all 5 products in batch processed
-- `test_partial_failure_doesnt_block_others` — 1 failure doesn't block other 4
-- `test_max_retries_permanent_failure` — product with retry_count=3 stays failed
-- `test_concurrency_limit_setting_exists` — setting is available
-
-### Documentation
-- Created `docs/performance.md` with before/after numbers, caching architecture, concurrency tuning guide
-
-## Files Created
-- `taxonomy/services/__init__.py`
-- `taxonomy/services/cache.py`
-- `classification/tests/test_query_performance.py`
-- `classification/tests/test_concurrency.py`
-- `classification/migrations/0003_add_status_created_at_index.py`
-- `docs/performance.md`
-
-## Files Modified
-- `classification/serializers.py` — N+1 fix: bulk-load alternative categories, context cache sharing
-- `classification/views.py` — pre-compute alternative category cache per page
-- `classification/services/candidate_finder.py` — use taxonomy cache instead of per-call DB query
-- `classification/tasks.py` — concurrency limit setting, bulk error handling, bulk_update
-- `classification/models.py` — composite index on (status, -created_at)
-- `taxonomy/management/commands/load_taxonomy.py` — invalidate cache after successful load
-- `config/settings/base.py` — CACHES, CLASSIFICATION_CONCURRENCY_LIMIT, TAXONOMY_CACHE_TTL
-- `config/settings/prod.py` — Redis-backed CACHES
-- `profile_stage15.py` — profiling script (updated for post-optimization verification)
-
-## Test Status
-- 254 tests, 0 failures
-- New tests added: 8 (4 query performance + 4 concurrency)
-
----
-
-# Stage 16: DONE
-
-Documentation consolidation — README rewrite, architecture docs, API reference, decisions log, env var audit, service docstrings.
+Final production readiness audit and polish pass. No new features — cleanup, consistency fixes, and verification.
 
 ## Changes
 
-### README.md (rewrite)
-- Complete rewrite as single entry point for new developers
-- Added table of contents with cross-links to all docs
-- Architecture summary paragraph with link to docs/architecture.md
-- Step-by-step local setup (10 steps, correct order: venv → deps → env → Redis → migrate → taxonomy → superuser → server → worker → optional frontend/beat)
-- Accurate for dev settings (SQLite, no MariaDB needed locally)
-- Configuration table with all key env vars
-- Troubleshooting section covering the most common setup issues
-- API quick-reference table
+### Dead Code Removal
+- Deleted `profile_stage15.py` (leftover profiling script from Stage 15)
+- Removed `_MAX_WORKERS = 5` from `classification/tasks.py` (superseded by `CLASSIFICATION_CONCURRENCY_LIMIT` setting)
+- Removed unused `_NO_DEBUG_TOOLBAR_MIDDLEWARE` from `products/tests/test_import_extra.py`
+- Removed unused `TEST_MEDIA = tempfile.mkdtemp()` and `import tempfile` from `classification/tests/test_query_performance.py`
+- Removed redundant `pass` in `ReviewError` class body
 
-### docs/architecture.md (new)
-- High-level component diagram (Django, Celery, Redis, Anthropic, DB)
-- Data flow diagram from import through classification to persistence
-- Low-level architecture: Django apps, Celery config, taxonomy caching, settings structure, key models
-- Classification pipeline services described in sequence
+### Configuration Fixes
+- Fixed `config/celery.py` default: `config.settings.dev` → `config.settings` (was a workaround in docker-compose.prod.yml, now fixed at source)
+- Removed duplicate import sorting: removed `isort` from `.pre-commit-config.yaml` (ruff `"I"` rules handle this)
+- Added `coverage>=7.0,<8.0` to dev dependencies
+- Added `staticfiles/` and `*.log` to `.gitignore`
+- Removed deprecated `version: "3.8"` from `docker-compose.yml`
+- Bumped `pyproject.toml` version from `0.1.0` to `1.0.0`
 
-### docs/api.md (new)
-- All 10 endpoints documented from actual DRF views/serializers
-- Method, path, auth requirement, request/response shape for each
-- Working curl examples for every endpoint
-- Rate limiting, authentication, and pagination sections
-- Error format documented
-
-### docs/decisions.md (new)
-- 6 Architecture Decision Records: MariaDB over Postgres, Celery+Redis, two-stage pipeline, thread pool concurrency, taxonomy caching, SQLite in dev
-
-### .env.example (audit)
-- Added 8 missing env vars: CLASSIFICATION_CANDIDATE_LIMIT, CLASSIFICATION_CONFIDENCE_THRESHOLD, CLASSIFICATION_MAX_RETRIES, CLASSIFICATION_CONCURRENCY_LIMIT, TAXONOMY_CACHE_TTL, SECURE_HSTS_SECONDS, SECURE_SSL_REDIRECT, REDIS_URL
-- Removed stale MEDIA_ROOT (not referenced via os.environ)
-- Added commented-out prod-only section for SECURE_HSTS_SECONDS, SECURE_SSL_REDIRECT, REDIS_URL
-
-### docs/runbook.md (consolidation)
-- Added cross-reference header linking to README, security, API, architecture
-
-### docs/security.md (consolidation)
-- Added cross-reference header linking to README, runbook, API, architecture
-
-### Service Docstrings
-- `products/services/import_service.py` — added docstrings to ParseError, import_products, _normalize_header, _read_csv, _read_xlsx, _parse_image_urls, _validate_headers, _create_products
-- `classification/services/review_service.py` — added docstring to ReviewError
-- `classification/services/candidate_finder.py` — added docstring to CandidateResult
-- `taxonomy/services/cache.py` — added docstring to get_ttl
+### Documentation Fixes
+- README.md: added v1.0.0 status/version header
+- README.md: fixed coverage source list to include `config` (matching pyproject.toml)
+- docs/architecture.md: added `CategoryAttribute` model to Key Models table
+- docs/deployment.md: fixed "five services" → "six services"
+- docs/decisions.md: added v2 deferral notes (embedding search, cross-app test relocation, S3 media backend, observability stack)
 
 ## Verification
-- All 254 tests pass, 0 failures
-- ruff, black, isort all pass on modified files
-- All 24 env vars from codebase accounted for in .env.example
-- No stale env vars in .env.example
-
-## Files Created
-- `docs/architecture.md`
-- `docs/api.md`
-- `docs/decisions.md`
-
-## Files Modified
-- `README.md` (full rewrite)
-- `.env.example` (audit/complete)
-- `docs/runbook.md` (cross-reference header)
-- `docs/security.md` (cross-reference header)
-- `products/services/import_service.py` (docstrings)
-- `classification/services/review_service.py` (docstring)
-- `classification/services/candidate_finder.py` (docstring)
-- `taxonomy/services/cache.py` (docstring)
-
-## Test Status
-- 254 tests, 0 failures
-
----
-
-# Stage 17: DONE
-
-Production Docker deployment — multi-stage backend/frontend images, docker-compose.prod.yml, entrypoint script, static/media config, deployment docs, CI/CD workflow.
-
-## Changes
-
-### Backend Dockerfile (multi-stage)
-- **Builder stage:** Python 3.12, gcc/g++/libmariadb-dev for native deps, creates `/opt/venv` virtualenv, installs all deps
-- **Production stage:** Copies venv + app code, non-root `appuser`, gunicorn CMD, healthcheck via `curl`
-- Entrypoint: `scripts/entrypoint.sh`
-- Static/media dirs created with correct ownership
-
-### Frontend Dockerfile (multi-stage)
-- **Builder stage:** Node 20 Alpine, `npm ci && npm run build` → `/app/dist`
-- **Production stage:** nginx 1.27 Alpine, copies built assets to `/usr/share/nginx/html`, custom `nginx.conf`
-- Healthcheck via `wget` to `127.0.0.1:80` (fixed IPv4-only Alpine issue)
-
-### Nginx Configuration (`frontend/nginx.conf`)
-- Proxies `/api/` and `/admin/` to `web:8000` backend
-- SPA fallback: `try_files $uri $uri/ /index.html`
-- Gzip compression, long cache for hashed assets
-
-### Entrypoint Script (`scripts/entrypoint.sh`)
-- MariaDB readiness check via TCP socket (no python dependency)
-- Flock-guarded migration support (`RUN_MIGRATIONS=true`)
-- Static file collection fallback
-- `exec "$@"` to properly pass signals to gunicorn/celery
-
-### Docker Compose Production (`docker-compose.prod.yml`)
-- 6 services: web, worker, beat, db (MariaDB 10.11), redis (Redis 7 Alpine), frontend (nginx)
-- Health checks on all services
-- Resource limits per service (128MB–1GB)
-- `depends_on` with `condition: service_healthy` for correct startup ordering
-- `DJANGO_SETTINGS_MODULE=config.settings` set on all app containers (works around celery.py hardcoded `config.settings.dev`)
-- Persistent MariaDB volume
-
-### Production Settings (`config/settings/prod.py`)
-- `STATIC_ROOT`, `MEDIA_ROOT` configured
-- Gunicorn settings via env vars: `GUNICORN_WORKERS`, `GUNICORN_TIMEOUT`, `GUNICORN_BIND`
-
-### Build Fixes (`pyproject.toml`)
-- Fixed build backend: `setuptools.backends._legacy:_Backend` → `setuptools.build_meta`
-- Added missing dependencies: `django-cors-headers`, `gunicorn`
-- Added `[tool.setuptools.packages.find]` to exclude frontend/tests/docs from package
-
-### Deployment Documentation (`docs/deployment.md`)
-- Prerequisites, env vars table, deploy/rollback procedures, troubleshooting
-
-### CI/CD (`.github/workflows/deploy.yml`)
-- Builds and pushes `spc-backend` and `spc-frontend` to GitHub Container Registry
-- Triggers on `main` push and version tags
-
-### `.dockerignore`
-- Excludes `docs/`, `*.md`, `.github/`, `frontend/node_modules/`, `media/`, etc.
-
-### `.env.example`
-- Added production env vars: `GUNICORN_WORKERS`, `GUNICORN_TIMEOUT`, `GUNICORN_BIND`, `RUN_MIGRATIONS`
-
-## Verification
-- Full Docker stack started and verified: all 6 containers healthy
-- Health endpoint returns `{"status":"healthy","checks":{"database":"ok","redis":"ok"}}`
-- Frontend proxies correctly to backend (`curl http://localhost/api/health/` → 200)
-- All 254 tests pass, 0 failures
+- 254 tests pass, 0 failures
 - ruff, black, isort all pass
+- Full manual walkthrough: import → candidate finding → review/approve → health check all verified
+- All 11 API endpoints verified active
 
-## Files Created
-- `Dockerfile`
-- `frontend/Dockerfile`
-- `frontend/nginx.conf`
-- `docker-compose.prod.yml`
-- `scripts/entrypoint.sh`
-- `.dockerignore`
-- `.github/workflows/deploy.yml`
-- `docs/deployment.md`
-
-## Files Modified
-- `.env.example`
-- `config/settings/prod.py`
-- `pyproject.toml`
+## Git Tag
+- `v1.0.0` annotated tag created
 
 ## Test Status
 - 254 tests, 0 failures
 
 ---
 
-# Stage 18: NEXT
+# Stages 1–17 Summary
+
+See git history for prior stage details. Key milestones:
+
+- **Stage 1–5:** Core system — models, import pipeline, AI classification, taxonomy, candidate narrowing
+- **Stage 6–9:** Review workflow, API hardening, error handling, Celery tasks
+- **Stage 10–12:** Admin, security, testing
+- **Stage 13–14:** Final features, rate limiting, CORS, frontend integration
+- **Stage 15:** Performance — N+1 fixes, taxonomy caching, concurrency tuning, query regression tests
+- **Stage 16:** Documentation — README rewrite, architecture/API/decisions docs, env var audit
+- **Stage 17:** Production deployment — Docker images, docker-compose.prod.yml, CI/CD, entrypoint, deployment docs
