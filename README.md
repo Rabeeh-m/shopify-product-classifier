@@ -70,7 +70,7 @@ python manage.py migrate
 python manage.py load_taxonomy --source taxonomy/fixtures/sample_taxonomy.json
 ```
 
-### 6. Create a superuser (for admin access and token auth)
+### 6. Create a superuser (for admin access)
 
 ```bash
 python manage.py createsuperuser
@@ -173,18 +173,17 @@ The command is idempotent — running it multiple times will not create duplicat
 
 All endpoints are documented in detail in [docs/api.md](docs/api.md). Here's a quick reference:
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| `GET` | `/api/health/` | No | Health check (DB + Redis) |
-| `POST` | `/api/auth/login/` | No | Login, returns auth token |
-| `POST` | `/api/products/import/` | Yes | Upload CSV/XLSX, triggers classification |
-| `GET` | `/api/products/import/<id>/` | Yes | Check import status |
-| `GET` | `/api/taxonomy/categories/` | No | Search taxonomy categories |
-| `GET` | `/api/classification/jobs/status/` | No | Dashboard: product counts by status |
-| `GET` | `/api/classification/review/` | Yes | List classifications needing review |
-| `GET` | `/api/classification/review/<id>/` | Yes | Get single classification |
-| `POST` | `/api/classification/review/<id>/approve/` | Yes | Approve a classification |
-| `POST` | `/api/classification/review/<id>/correct/` | Yes | Correct a classification |
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/health/` | Health check (DB + Redis) |
+| `POST` | `/api/products/import/` | Upload CSV/XLSX, triggers classification |
+| `GET` | `/api/products/import/<id>/` | Check import status |
+| `GET` | `/api/taxonomy/categories/` | Search taxonomy categories |
+| `GET` | `/api/classification/jobs/status/` | Dashboard: product counts by status |
+| `GET` | `/api/classification/review/` | List classifications needing review |
+| `GET` | `/api/classification/review/<id>/` | Get single classification |
+| `POST` | `/api/classification/review/<id>/approve/` | Approve a classification |
+| `POST` | `/api/classification/review/<id>/correct/` | Correct a classification |
 
 ## Configuration
 

@@ -204,7 +204,6 @@ class ImportTriggerTest(TestCase):
     )
     @patch("classification.tasks.process_all_pending.delay")
     def test_import_triggers_task(self, mock_delay):
-        from django.contrib.auth.models import User
         from django.core.files.uploadedfile import SimpleUploadedFile
 
         from products.views import ProductImportCreateView
@@ -215,14 +214,12 @@ class ImportTriggerTest(TestCase):
         )
         upload = SimpleUploadedFile("test.csv", csv_data, content_type="text/csv")
 
-        from rest_framework.test import APIRequestFactory, force_authenticate
+        from rest_framework.test import APIRequestFactory
 
         factory = APIRequestFactory()
-        user = User.objects.create_user(username="importer", password="testpass123")
         request = factory.post(
             "/api/products/import/", {"file": upload}, format="multipart"
         )
-        force_authenticate(request, user=user)
         view = ProductImportCreateView.as_view()
         response = view(request)
 

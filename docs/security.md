@@ -35,27 +35,27 @@ data-sharing practices.
 
 ## 3. Authentication & Permissions
 
-| Endpoint | Method | Auth Required | Rate Limit |
-|---|---|---|---|
-| `/api/auth/login/` | POST | No (AllowAny) | 10/min (LoginThrottle) |
-| `/api/health/` | GET | No | Global 60/min anon |
-| `/api/classification/jobs/status/` | GET | No | Global 60/min anon |
-| `/api/taxonomy/categories/` | GET | No | Global 60/min anon |
-| `/api/products/import/` | POST | **Yes** (IsAuthenticated) | Global 120/min user |
-| `/api/products/import/<id>/` | GET | **Yes** (IsAuthenticated) | Global 120/min user |
-| `/api/classification/review/` | GET | **Yes** (IsAuthenticated) | Global 120/min user |
-| `/api/classification/review/<id>/` | GET | **Yes** (IsAuthenticated) | Global 120/min user |
-| `/api/classification/review/<id>/approve/` | POST | **Yes** (IsAuthenticated) | 30/min (ReviewWriteThrottle) |
-| `/api/classification/review/<id>/correct/` | POST | **Yes** (IsAuthenticated) | 30/min (ReviewWriteThrottle) |
+All endpoints are open by default. No authentication is required.
 
-Global DRF throttling: `anon: 60/minute`, `user: 120/minute`.
+| Endpoint | Method | Rate Limit |
+|---|---|---|
+| `/api/health/` | GET | Global 60/min |
+| `/api/classification/jobs/status/` | GET | Global 60/min |
+| `/api/taxonomy/categories/` | GET | Global 60/min |
+| `/api/products/import/` | POST | Global 60/min |
+| `/api/products/import/<id>/` | GET | Global 60/min |
+| `/api/classification/review/` | GET | Global 60/min |
+| `/api/classification/review/<id>/` | GET | Global 60/min |
+| `/api/classification/review/<id>/approve/` | POST | 30/min (ReviewWriteThrottle) |
+| `/api/classification/review/<id>/correct/` | POST | 30/min (ReviewWriteThrottle) |
+
+Global DRF throttling: `anon: 60/minute`.
 
 ## 4. Rate Limiting (Throttling)
 
 | Layer | Config | Added |
 |---|---|---|
-| Global DRF defaults | anon 60/min, user 120/min | Stage 14 |
-| Login endpoint | 10/min (LoginThrottle, per-IP) | Stage 14 |
+| Global DRF defaults | anon 60/min | Stage 14 |
 | Review approve/correct | 30/min (ReviewWriteThrottle, per-user) | Stage 14 |
 | Exception handler | Returns `{"error": {"code": "THROTTLED", ...}}` + 429 | Stage 12 |
 
@@ -113,7 +113,5 @@ separate planning).
 | Test | File |
 |---|---|
 | Upload MIME-type rejection | `products/tests/test_security.py` |
-| Unauthenticated import rejected (401) | `products/tests/test_import.py` |
 | Throttle 429 returned when rate exceeded | `products/tests/test_security.py` |
 | Upload extension whitelist enforced | `products/tests/test_import.py` |
-| Review endpoints reject unauth (403) | `classification/tests/test_review_api.py` |

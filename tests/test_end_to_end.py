@@ -4,7 +4,6 @@ import tempfile
 from unittest.mock import patch
 
 from django.conf import settings
-from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import TestCase, override_settings
@@ -71,8 +70,6 @@ class EndToEndFlowTest(TestCase):
 
     def setUp(self):
         self.client = APIClient()
-        self.user = User.objects.create_user(username="reviewer", password="pass123")
-        self.client.force_authenticate(user=self.user)
 
     def test_full_import_classify_review_approve_flow(self):
         # --- Step 1: Import products ---
@@ -150,12 +147,10 @@ class EndToEndFlowTest(TestCase):
         )
         self.assertEqual(approve_resp.status_code, 200)
         self.assertEqual(approve_resp.data["status"], "approved")
-        self.assertIsNotNone(approve_resp.data["reviewed_by"])
 
         # Verify DB consistency
         cls_obj = Classification.objects.get(pk=first_id)
         self.assertEqual(cls_obj.status, Classification.Status.APPROVED)
-        self.assertEqual(cls_obj.reviewed_by, self.user)
         self.assertIsNotNone(cls_obj.reviewed_at)
         self.assertEqual(cls_obj.product.status, "done")
 

@@ -7,9 +7,9 @@ and verify that the taxonomy cache invalidation actually works.
 import os
 
 from django.conf import settings
-from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.test import TestCase, override_settings
+from rest_framework.test import APIClient
 
 from classification.models import Classification
 from classification.services.candidate_finder import find_candidates
@@ -36,7 +36,6 @@ class ReviewListQueryCountTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         call_command("load_taxonomy", source=FIXTURE_PATH, verbosity=0)
-        cls.user = User.objects.create_user(username="reviewer", password="pass123")
         cat = Category.objects.first()
         for i in range(25):
             p = Product.objects.create(
@@ -54,10 +53,7 @@ class ReviewListQueryCountTest(TestCase):
             )
 
     def setUp(self):
-        from rest_framework.test import APIClient
-
         self.client = APIClient()
-        self.client.force_authenticate(user=self.user)
 
     def test_review_list_query_count(self):
         """Review list should use <= 5 queries regardless of result count.

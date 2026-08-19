@@ -2,7 +2,6 @@ import os
 import tempfile
 
 from django.conf import settings
-from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from rest_framework import status
@@ -126,10 +125,6 @@ class ImportServiceTest(TestCase):
 class ProductImportAPITest(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.user = User.objects.create_user(
-            username="importer", password="testpass123"
-        )
-        self.client.force_authenticate(user=self.user)
 
     def test_post_with_valid_csv(self):
         data = _read_fixture("sample_products.csv")
@@ -190,11 +185,3 @@ class ProductImportAPITest(TestCase):
     def test_get_detail_not_found(self):
         response = self.client.get("/api/products/import/99999/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-
-    def test_unauthenticated_rejected(self):
-        self.client.force_authenticate(user=None)
-        response = self.client.get("/api/products/import/")
-        self.assertIn(
-            response.status_code,
-            [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN],
-        )

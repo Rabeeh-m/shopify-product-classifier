@@ -63,12 +63,6 @@ class ReviewListTest(TestCase):
 
     def setUp(self):
         self.client = APIClient()
-        self.client.force_authenticate(user=self.user)
-
-    def test_unauthenticated_returns_403(self):
-        unauth = APIClient()
-        response = unauth.get("/api/classification/review/")
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_empty_list(self):
         response = self.client.get("/api/classification/review/")
@@ -171,7 +165,6 @@ class ReviewDetailTest(TestCase):
 
     def setUp(self):
         self.client = APIClient()
-        self.client.force_authenticate(user=self.user)
 
     def test_get_detail(self):
         p = _create_product(external_id="e1", title="Detail Product")
@@ -187,13 +180,6 @@ class ReviewDetailTest(TestCase):
         response = self.client.get("/api/classification/review/99999/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
-    def test_unauthenticated_returns_403(self):
-        p = _create_product(external_id="e1")
-        classification = _create_classification(p)
-        unauth = APIClient()
-        response = unauth.get(f"/api/classification/review/{classification.pk}/")
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
 
 @override_settings(MIDDLEWARE=_NO_DEBUG_TOOLBAR_MIDDLEWARE)
 class ReviewApproveTest(TestCase):
@@ -204,7 +190,6 @@ class ReviewApproveTest(TestCase):
 
     def setUp(self):
         self.client = APIClient()
-        self.client.force_authenticate(user=self.user)
 
     def test_approve_sets_status(self):
         p = _create_product(external_id="e1", title="Approve Me")
@@ -215,11 +200,9 @@ class ReviewApproveTest(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["status"], "approved")
-        self.assertEqual(response.data["reviewed_by"], self.user.username)
 
         classification.refresh_from_db()
         self.assertEqual(classification.status, Classification.Status.APPROVED)
-        self.assertEqual(classification.reviewed_by, self.user)
         self.assertIsNotNone(classification.reviewed_at)
 
     def test_approve_updates_product_status(self):
@@ -248,15 +231,6 @@ class ReviewApproveTest(TestCase):
         response = self.client.post("/api/classification/review/99999/approve/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
-    def test_approve_unauthenticated(self):
-        p = _create_product(external_id="e1")
-        classification = _create_classification(p)
-        unauth = APIClient()
-        response = unauth.post(
-            f"/api/classification/review/{classification.pk}/approve/"
-        )
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
 
 @override_settings(MIDDLEWARE=_NO_DEBUG_TOOLBAR_MIDDLEWARE)
 class ReviewCorrectTest(TestCase):
@@ -273,7 +247,6 @@ class ReviewCorrectTest(TestCase):
 
     def setUp(self):
         self.client = APIClient()
-        self.client.force_authenticate(user=self.user)
 
     def test_correct_with_new_category(self):
         p = _create_product(external_id="e1", title="Correct Me")
@@ -371,17 +344,6 @@ class ReviewCorrectTest(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-
-    def test_correct_unauthenticated(self):
-        p = _create_product(external_id="e1")
-        classification = _create_classification(p)
-        unauth = APIClient()
-        response = unauth.post(
-            f"/api/classification/review/{classification.pk}/correct/",
-            {"category_id": self.cat.id},
-            format="json",
-        )
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_correct_preserves_original_ai_alternatives(self):
         p = _create_product(external_id="e1")

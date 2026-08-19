@@ -1,4 +1,3 @@
-from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -7,8 +6,6 @@ from taxonomy.serializers import CategoryListSerializer
 
 
 class CategorySearchView(APIView):
-    permission_classes = [AllowAny]
-
     def get(self, request):
         search = request.query_params.get("search", "")
         qs = Category.objects.all()

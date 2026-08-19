@@ -1,8 +1,6 @@
 from django.conf import settings
-from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from rest_framework import status
-from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
 from products.models import Product
@@ -10,43 +8,6 @@ from products.models import Product
 _NO_DEBUG_TOOLBAR_MIDDLEWARE = [
     m for m in settings.MIDDLEWARE if "debug_toolbar" not in m
 ]
-
-
-@override_settings(MIDDLEWARE=_NO_DEBUG_TOOLBAR_MIDDLEWARE)
-class LoginViewTest(TestCase):
-    def setUp(self):
-        self.client = APIClient()
-        self.user = User.objects.create_user(
-            username="testuser", password="testpass123"
-        )
-
-    def test_login_success(self):
-        response = self.client.post(
-            "/api/auth/login/",
-            {"username": "testuser", "password": "testpass123"},
-            format="json",
-        )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("token", response.data)
-        self.assertEqual(response.data["username"], "testuser")
-        self.assertTrue(Token.objects.filter(user=self.user).exists())
-
-    def test_login_invalid_credentials(self):
-        response = self.client.post(
-            "/api/auth/login/",
-            {"username": "testuser", "password": "wrongpass"},
-            format="json",
-        )
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-        self.assertIn("error", response.data)
-
-    def test_login_missing_fields(self):
-        response = self.client.post(
-            "/api/auth/login/",
-            {"username": "testuser"},
-            format="json",
-        )
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
 
 @override_settings(MIDDLEWARE=_NO_DEBUG_TOOLBAR_MIDDLEWARE)
@@ -88,8 +49,6 @@ class ClassificationJobStatusViewTest(TestCase):
 class ReviewListViewUnpagedTest(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.user = User.objects.create_user(username="reviewer", password="pass123")
-        self.client.force_authenticate(user=self.user)
 
     def test_fewer_than_page_size_returns_list(self):
         from classification.models import Classification

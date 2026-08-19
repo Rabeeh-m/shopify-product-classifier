@@ -1,12 +1,9 @@
 import logging
 
-from django.contrib.auth import authenticate
 from django.db.models import Count, Q
 from rest_framework import status
-from rest_framework.authtoken.models import Token
-from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
+from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
 
 from classification.models import Classification
@@ -22,34 +19,11 @@ from taxonomy.models import Category
 logger = logging.getLogger(__name__)
 
 
-class LoginThrottle(AnonRateThrottle):
-    rate = "10/minute"
-
-
 class ReviewWriteThrottle(UserRateThrottle):
     rate = "30/minute"
 
 
-class LoginView(APIView):
-    permission_classes = [AllowAny]
-    throttle_classes = [LoginThrottle]
-
-    def post(self, request):
-        username = request.data.get("username")
-        password = request.data.get("password")
-        user = authenticate(username=username, password=password)
-        if user is None:
-            return Response(
-                {"error": "Invalid credentials"},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
-        token, _ = Token.objects.get_or_create(user=user)
-        return Response({"token": token.key, "username": user.username})
-
-
 class ClassificationJobStatusView(APIView):
-    permission_classes = [AllowAny]
-
     def get(self, request):
         counts = Product.objects.aggregate(
             pending=Count("id", filter=Q(status="pending")),
@@ -73,8 +47,6 @@ class ClassificationJobStatusView(APIView):
 
 
 class ReviewListView(APIView):
-    permission_classes = [IsAuthenticated]
-
     def _collect_alt_cat_ids(self, classifications):
         """Gather all unique category_ids referenced in alternatives across a page."""
         cat_ids = set()
@@ -146,8 +118,6 @@ class ReviewListView(APIView):
 
 
 class ReviewDetailView(APIView):
-    permission_classes = [IsAuthenticated]
-
     def get(self, request, pk):
         try:
             classification = (
@@ -172,7 +142,6 @@ class ReviewDetailView(APIView):
 
 
 class ReviewApproveView(APIView):
-    permission_classes = [IsAuthenticated]
     throttle_classes = [ReviewWriteThrottle]
 
     def post(self, request, pk):
@@ -186,8 +155,10 @@ class ReviewApproveView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        reviewer = request.user if request.user.is_authenticated else None
+
         try:
-            result = approve_classification(classification, request.user)
+            result = approve_classification(classification, reviewer)
         except ReviewError as exc:
             logger.warning("Approve failed for classification %d: %s", pk, exc)
             return Response({"error": str(exc)}, status=status.HTTP_409_CONFLICT)
@@ -197,7 +168,6 @@ class ReviewApproveView(APIView):
 
 
 class ReviewCorrectView(APIView):
-    permission_classes = [IsAuthenticated]
     throttle_classes = [ReviewWriteThrottle]
 
     def post(self, request, pk):
@@ -223,10 +193,12 @@ class ReviewCorrectView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
 
+        reviewer = request.user if request.user.is_authenticated else None
+
         try:
             result = correct_classification(
                 classification,
-                request.user,
+                reviewer,
                 category_id=category_id,
                 attributes=attributes,
             )

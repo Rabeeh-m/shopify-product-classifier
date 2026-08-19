@@ -2,7 +2,6 @@ import os
 import tempfile
 
 from django.conf import settings
-from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from rest_framework import status
@@ -32,10 +31,6 @@ def _read_fixture(filename):
 class UploadMimeTypeTest(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.user = User.objects.create_user(
-            username="uploader", password="testpass123"
-        )
-        self.client.force_authenticate(user=self.user)
 
     def test_csv_with_csv_content_type_accepted(self):
         data = _read_fixture("sample_products.csv")
@@ -69,60 +64,6 @@ class UploadMimeTypeTest(TestCase):
             "/api/products/import/", {"file": upload}, format="multipart"
         )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-
-
-@override_settings(
-    MEDIA_ROOT=TEST_MEDIA,
-    MIDDLEWARE=_NO_DEBUG_TOOLBAR_MIDDLEWARE,
-)
-class UnauthenticatedAccessTest(TestCase):
-    def test_import_create_requires_auth(self):
-        unauth = APIClient()
-        resp = unauth.post("/api/products/import/", {}, format="multipart")
-        self.assertIn(
-            resp.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN]
-        )
-
-    def test_import_detail_requires_auth(self):
-        unauth = APIClient()
-        resp = unauth.get("/api/products/import/1/")
-        self.assertIn(
-            resp.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN]
-        )
-
-    def test_review_list_requires_auth(self):
-        unauth = APIClient()
-        resp = unauth.get("/api/classification/review/")
-        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_review_approve_requires_auth(self):
-        unauth = APIClient()
-        resp = unauth.post("/api/classification/review/1/approve/")
-        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_review_correct_requires_auth(self):
-        unauth = APIClient()
-        resp = unauth.post(
-            "/api/classification/review/1/correct/",
-            {"category_id": 1},
-            format="json",
-        )
-        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_health_check_accessible_without_auth(self):
-        unauth = APIClient()
-        resp = unauth.get("/api/health/")
-        self.assertIn(resp.status_code, [200, 503])
-
-    def test_job_status_accessible_without_auth(self):
-        unauth = APIClient()
-        resp = unauth.get("/api/classification/jobs/status/")
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
-
-    def test_category_search_accessible_without_auth(self):
-        unauth = APIClient()
-        resp = unauth.get("/api/taxonomy/categories/")
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
 
 
 @override_settings(

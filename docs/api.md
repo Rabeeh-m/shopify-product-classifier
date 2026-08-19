@@ -2,11 +2,11 @@
 
 Base URL: `http://localhost:8000` (development)
 
-All responses use JSON. Authentication is via DRF tokens (include `Authorization: Token <token>` header) or session cookies.
+All responses use JSON. All endpoints are open (no authentication required).
 
 ## Rate Limiting
 
-Global DRF throttles apply to all endpoints: anonymous 60/min, authenticated 120/min. Login is limited to 10/min per IP. Review write endpoints (approve/correct) are limited to 30/min per user.
+Global DRF throttles apply to all endpoints: anonymous 60/min. Review write endpoints (approve/correct) are limited to 30/min.
 
 When throttled, the response is HTTP 429 with:
 ```json
@@ -70,53 +70,12 @@ curl http://localhost:8000/api/health/
 
 ---
 
-## 2. Login
-
-```
-POST /api/auth/login/
-```
-
-**Auth required:** No  
-**Throttle:** 10 requests/minute (per IP)
-
-**Request body:**
-```json
-{
-  "username": "admin",
-  "password": "secret"
-}
-```
-
-**Response (200):**
-```json
-{
-  "token": "9944b09199c62bcf9418ad846dd0e4bbdfc6ee4b",
-  "username": "admin"
-}
-```
-
-**Response (401):**
-```json
-{
-  "error": "Invalid credentials"
-}
-```
-
-```bash
-curl -X POST http://localhost:8000/api/auth/login/ \
-  -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "secret"}'
-```
-
----
-
-## 3. Product Import (Create)
+## 2. Product Import (Create)
 
 ```
 POST /api/products/import/
 ```
 
-**Auth required:** Yes  
 **Content-Type:** `multipart/form-data`
 
 **Form field:** `file` — a `.csv` or `.xlsx` file.
@@ -162,19 +121,16 @@ After a successful import, the Celery task `process_all_pending` is automaticall
 
 ```bash
 curl -X POST http://localhost:8000/api/products/import/ \
-  -H "Authorization: Token YOUR_TOKEN" \
   -F "file=@products.csv"
 ```
 
 ---
 
-## 4. Product Import (Detail)
+## 3. Product Import (Detail)
 
 ```
 GET /api/products/import/<id>/
 ```
-
-**Auth required:** Yes
 
 **Response (200):** Same shape as the create response, with current import status.
 
@@ -189,13 +145,12 @@ GET /api/products/import/<id>/
 ```
 
 ```bash
-curl http://localhost:8000/api/products/import/1/ \
-  -H "Authorization: Token YOUR_TOKEN"
+curl http://localhost:8000/api/products/import/1/
 ```
 
 ---
 
-## 5. Category Search
+## 4. Category Search
 
 ```
 GET /api/taxonomy/categories/?search=<query>
@@ -230,7 +185,7 @@ curl "http://localhost:8000/api/taxonomy/categories/?search=t-shirt"
 
 ---
 
-## 6. Classification Job Status
+## 5. Classification Job Status
 
 ```
 GET /api/classification/jobs/status/
@@ -256,13 +211,11 @@ curl http://localhost:8000/api/classification/jobs/status/
 
 ---
 
-## 7. Review List
+## 6. Review List
 
 ```
 GET /api/classification/review/
 ```
-
-**Auth required:** Yes
 
 **Query parameters (all optional):**
 - `min_confidence` — filter: confidence >= value
@@ -322,23 +275,19 @@ GET /api/classification/review/
 ```
 
 ```bash
-curl http://localhost:8000/api/classification/review/ \
-  -H "Authorization: Token YOUR_TOKEN"
+curl http://localhost:8000/api/classification/review/
 
 # With filters
-curl "http://localhost:8000/api/classification/review/?min_confidence=50&search=t-shirt" \
-  -H "Authorization: Token YOUR_TOKEN"
+curl "http://localhost:8000/api/classification/review/?min_confidence=50&search=t-shirt"
 ```
 
 ---
 
-## 8. Review Detail
+## 7. Review Detail
 
 ```
 GET /api/classification/review/<id>/
 ```
-
-**Auth required:** Yes
 
 **Response (200):** Single classification object with the same shape as items in the review list `results` array.
 
@@ -350,19 +299,17 @@ GET /api/classification/review/<id>/
 ```
 
 ```bash
-curl http://localhost:8000/api/classification/review/1/ \
-  -H "Authorization: Token YOUR_TOKEN"
+curl http://localhost:8000/api/classification/review/1/
 ```
 
 ---
 
-## 9. Approve Classification
+## 8. Approve Classification
 
 ```
 POST /api/classification/review/<id>/approve/
 ```
 
-**Auth required:** Yes  
 **Throttle:** 30 requests/minute  
 **Request body:** None (empty POST)
 
@@ -385,19 +332,17 @@ Approves a classification in `needs_review` status. Sets the classification stat
 ```
 
 ```bash
-curl -X POST http://localhost:8000/api/classification/review/1/approve/ \
-  -H "Authorization: Token YOUR_TOKEN"
+curl -X POST http://localhost:8000/api/classification/review/1/approve/
 ```
 
 ---
 
-## 10. Correct Classification
+## 9. Correct Classification
 
 ```
 POST /api/classification/review/<id>/correct/
 ```
 
-**Auth required:** Yes  
 **Throttle:** 30 requests/minute
 
 Corrects a classification in `needs_review` status by updating its category and/or attributes.
@@ -443,27 +388,16 @@ Both `category_id` and `attributes` are optional — supply one or both. If `att
 ```bash
 # Change category only
 curl -X POST http://localhost:8000/api/classification/review/1/correct/ \
-  -H "Authorization: Token YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"category_id": 58}'
 
 # Update attributes only
 curl -X POST http://localhost:8000/api/classification/review/1/correct/ \
-  -H "Authorization: Token YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"attributes": [{"name": "Color", "value": "Red"}]}'
 ```
 
 ---
-
-## Authentication
-
-The API supports two authentication methods:
-
-1. **Token authentication** — Include `Authorization: Token <token>` in the request header. Obtain a token via the login endpoint.
-2. **Session authentication** — Log in via the Django admin (`/admin/`) and the session cookie will be sent with requests from the browser.
-
-For programmatic access, use token authentication.
 
 ## Pagination
 
