@@ -2,23 +2,12 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 
 async function request(path, options = {}) {
   const url = `${BASE_URL}${path}`;
-  const token = localStorage.getItem("token");
-
   const headers = { ...options.headers };
-  if (token) {
-    headers["Authorization"] = `Token ${token}`;
-  }
   if (!(options.body instanceof FormData)) {
     headers["Content-Type"] = headers["Content-Type"] || "application/json";
   }
 
   const res = await fetch(url, { ...options, headers });
-
-  if (res.status === 401 || res.status === 403) {
-    localStorage.removeItem("token");
-    window.location.href = "/login";
-    throw new Error("Authentication required");
-  }
 
   if (!res.ok) {
     const data = await res.json().catch(() => null);
@@ -29,13 +18,6 @@ async function request(path, options = {}) {
 
   if (res.status === 204) return null;
   return res.json();
-}
-
-export function login(username, password) {
-  return request("/api/auth/login/", {
-    method: "POST",
-    body: JSON.stringify({ username, password }),
-  });
 }
 
 export function uploadFile(file, onProgress) {
@@ -60,9 +42,7 @@ export function uploadFile(file, onProgress) {
 
     xhr.addEventListener("error", () => reject(new Error("Upload failed")));
 
-    const token = localStorage.getItem("token");
     xhr.open("POST", `${BASE_URL}/api/products/import/`);
-    if (token) xhr.setRequestHeader("Authorization", `Token ${token}`);
     xhr.send(formData);
   });
 }
