@@ -1,6 +1,5 @@
 import tempfile
 
-from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 
@@ -8,10 +7,6 @@ from products.models import Product
 from products.services.import_service import ParseError, import_products
 
 TEST_MEDIA = tempfile.mkdtemp()
-
-_NO_DEBUG_TOOLBAR_MIDDLEWARE = [
-    m for m in settings.MIDDLEWARE if "debug_toolbar" not in m
-]
 
 
 @override_settings(MEDIA_ROOT=TEST_MEDIA)

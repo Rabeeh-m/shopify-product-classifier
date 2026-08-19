@@ -5,7 +5,6 @@ and verify that the taxonomy cache invalidation actually works.
 """
 
 import os
-import tempfile
 
 from django.conf import settings
 from django.contrib.auth.models import User
@@ -24,8 +23,6 @@ FIXTURE_PATH = os.path.join(
     "fixtures",
     "sample_taxonomy.json",
 )
-
-TEST_MEDIA = tempfile.mkdtemp()
 
 _NO_DEBUG_TOOLBAR_MIDDLEWARE = [
     m for m in settings.MIDDLEWARE if "debug_toolbar" not in m

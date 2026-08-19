@@ -15,8 +15,6 @@ class ReviewError(Exception):
     Covers invalid state transitions and taxonomy validation errors.
     """
 
-    pass
-
 
 def approve_classification(classification, user):
     """Approve a classification as-is from the AI suggestion.

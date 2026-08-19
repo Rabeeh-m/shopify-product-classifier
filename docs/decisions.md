@@ -35,3 +35,33 @@
 **Decision:** Use SQLite for local development (dev settings), MariaDB for production.
 
 **Rationale:** SQLite requires no database server installation — developers can clone the repo and run the full test suite with zero infrastructure. The dev settings override the MariaDB configuration to SQLite automatically. Production uses MariaDB for its concurrent write support, data integrity guarantees, and compatibility with MySQL tooling. CI also uses SQLite, keeping the test environment uniform and fast.
+
+---
+
+## v1.0.0 — Known Deferrals (v2 Candidates)
+
+The following items were evaluated during the v1.0.0 audit and deliberately deferred. They are not oversights — they represent scope boundaries drawn to ship a focused v1.
+
+### Embedding-Based Candidate Search (ADR 3 follow-up)
+
+The candidate finder currently uses keyword-overlap scoring to narrow the taxonomy. An embedding-based approach (vector similarity between product title/description and category embeddings) would improve recall for products with sparse or non-obvious titles. The `find_candidates` module is explicitly designed as an extension point for this — the scoring function is isolated and the candidate list is the only interface between the narrowing step and the LLM classifier.
+
+**Status:** Not implemented in v1. Keyword scoring is sufficient for the current taxonomy size and product mix. Embedding search is the primary v2 candidate for classification accuracy improvement.
+
+### Cross-App Model Test Relocation
+
+Some taxonomy and classification model tests currently live in `products/tests/test_models.py` (added in early stages when the test surface was small). These should be moved to their respective apps' test directories for better organization. This was deferred because it doesn't affect functionality — only code organization.
+
+**Status:** Cosmetic. Low priority for v2.
+
+### Production Static/Media File Backend
+
+The current production settings store media files on the local filesystem (`MEDIA_ROOT`). For multi-replica or cloud deployments, an S3-compatible object storage backend (via `django-storages`) would be needed. The settings are structured to make this a drop-in replacement.
+
+**Status:** Not needed for single-node deployment. Documented as a v2 consideration for horizontal scaling.
+
+### Observability and Structured Logging
+
+The current logging uses Python's `logging` module with a JSON formatter in production. A more comprehensive observability stack (OpenTelemetry tracing, structured log aggregation, metrics dashboards) would improve production debugging but is out of scope for v1's single-node deployment target.
+
+**Status:** Deferred to v2. Current logging is sufficient for single-node production use.

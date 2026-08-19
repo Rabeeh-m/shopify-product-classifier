@@ -1,5 +1,7 @@
 # Shopify Product Classifier
 
+**Version: v1.0.0** | **Status: Production Ready**
+
 A Django backend that classifies Shopify products into a taxonomy using a two-stage pipeline: a keyword-overlap narrowing step selects candidate categories, then an LLM (Anthropic Claude) picks the best match and extracts product attributes. Results are stored in the database and surfaced through a REST API for human review.
 
 ## Table of Contents
@@ -121,7 +123,7 @@ This runs the scheduled task that automatically requeues products stuck in "proc
 python manage.py test
 
 # Run with coverage (must be ≥90% on classification/, products/, core/)
-coverage run --source=classification,products,core -m django test
+coverage run --source=classification,products,core,config -m django test
 coverage report
 
 # Run a specific module

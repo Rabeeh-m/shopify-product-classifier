@@ -4,7 +4,7 @@
 
 ## Overview
 
-The production deployment uses Docker Compose with five services:
+The production deployment uses Docker Compose with six services:
 
 | Service | Image | Purpose |
 |---------|-------|---------|

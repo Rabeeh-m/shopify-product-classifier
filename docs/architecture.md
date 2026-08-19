@@ -124,6 +124,7 @@ Two-tier retry system: Celery retries the task itself (max 2 retries), and each 
 | `Category` | taxonomy | Taxonomy category with hierarchical `full_path` |
 | `Attribute` | taxonomy | Taxonomy attribute (e.g., "Color", "Material") |
 | `AttributeValue` | taxonomy | Predefined value for an attribute |
+| `CategoryAttribute` | taxonomy | Links categories to their allowed attributes |
 | `Product` | products | Imported product with status tracking |
 | `ProductImage` | products | Product image URLs |
 | `ProductImport` | products | Import job metadata and status |

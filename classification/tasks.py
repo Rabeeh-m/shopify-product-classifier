@@ -9,8 +9,6 @@ from products.models import Product
 
 logger = logging.getLogger(__name__)
 
-_MAX_WORKERS = 5
-
 
 def _mark_processing(product_ids):
     """Atomically set status='processing' and processing_started_at for a batch.

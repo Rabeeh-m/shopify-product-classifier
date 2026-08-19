@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shopify-product-classifier"
-version = "0.1.0"
+version = "1.0.0"
 requires-python = ">=3.11"
 dependencies = [
     "Django>=5.1,<5.2",
@@ -28,6 +28,7 @@ dev = [
     "isort>=5.12,<9.0",
     "ruff>=0.4,<1.0",
     "pre-commit>=3.5,<5.0",
+    "coverage>=7.0,<8.0",
 ]
 monitoring = [
     "sentry-sdk>=2.14,<3.0",
