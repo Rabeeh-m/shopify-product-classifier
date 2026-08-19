@@ -152,4 +152,89 @@ Documentation consolidation — README rewrite, architecture docs, API reference
 
 ---
 
-# Stage 17: NEXT
+# Stage 17: DONE
+
+Production Docker deployment — multi-stage backend/frontend images, docker-compose.prod.yml, entrypoint script, static/media config, deployment docs, CI/CD workflow.
+
+## Changes
+
+### Backend Dockerfile (multi-stage)
+- **Builder stage:** Python 3.12, gcc/g++/libmariadb-dev for native deps, creates `/opt/venv` virtualenv, installs all deps
+- **Production stage:** Copies venv + app code, non-root `appuser`, gunicorn CMD, healthcheck via `curl`
+- Entrypoint: `scripts/entrypoint.sh`
+- Static/media dirs created with correct ownership
+
+### Frontend Dockerfile (multi-stage)
+- **Builder stage:** Node 20 Alpine, `npm ci && npm run build` → `/app/dist`
+- **Production stage:** nginx 1.27 Alpine, copies built assets to `/usr/share/nginx/html`, custom `nginx.conf`
+- Healthcheck via `wget` to `127.0.0.1:80` (fixed IPv4-only Alpine issue)
+
+### Nginx Configuration (`frontend/nginx.conf`)
+- Proxies `/api/` and `/admin/` to `web:8000` backend
+- SPA fallback: `try_files $uri $uri/ /index.html`
+- Gzip compression, long cache for hashed assets
+
+### Entrypoint Script (`scripts/entrypoint.sh`)
+- MariaDB readiness check via TCP socket (no python dependency)
+- Flock-guarded migration support (`RUN_MIGRATIONS=true`)
+- Static file collection fallback
+- `exec "$@"` to properly pass signals to gunicorn/celery
+
+### Docker Compose Production (`docker-compose.prod.yml`)
+- 6 services: web, worker, beat, db (MariaDB 10.11), redis (Redis 7 Alpine), frontend (nginx)
+- Health checks on all services
+- Resource limits per service (128MB–1GB)
+- `depends_on` with `condition: service_healthy` for correct startup ordering
+- `DJANGO_SETTINGS_MODULE=config.settings` set on all app containers (works around celery.py hardcoded `config.settings.dev`)
+- Persistent MariaDB volume
+
+### Production Settings (`config/settings/prod.py`)
+- `STATIC_ROOT`, `MEDIA_ROOT` configured
+- Gunicorn settings via env vars: `GUNICORN_WORKERS`, `GUNICORN_TIMEOUT`, `GUNICORN_BIND`
+
+### Build Fixes (`pyproject.toml`)
+- Fixed build backend: `setuptools.backends._legacy:_Backend` → `setuptools.build_meta`
+- Added missing dependencies: `django-cors-headers`, `gunicorn`
+- Added `[tool.setuptools.packages.find]` to exclude frontend/tests/docs from package
+
+### Deployment Documentation (`docs/deployment.md`)
+- Prerequisites, env vars table, deploy/rollback procedures, troubleshooting
+
+### CI/CD (`.github/workflows/deploy.yml`)
+- Builds and pushes `spc-backend` and `spc-frontend` to GitHub Container Registry
+- Triggers on `main` push and version tags
+
+### `.dockerignore`
+- Excludes `docs/`, `*.md`, `.github/`, `frontend/node_modules/`, `media/`, etc.
+
+### `.env.example`
+- Added production env vars: `GUNICORN_WORKERS`, `GUNICORN_TIMEOUT`, `GUNICORN_BIND`, `RUN_MIGRATIONS`
+
+## Verification
+- Full Docker stack started and verified: all 6 containers healthy
+- Health endpoint returns `{"status":"healthy","checks":{"database":"ok","redis":"ok"}}`
+- Frontend proxies correctly to backend (`curl http://localhost/api/health/` → 200)
+- All 254 tests pass, 0 failures
+- ruff, black, isort all pass
+
+## Files Created
+- `Dockerfile`
+- `frontend/Dockerfile`
+- `frontend/nginx.conf`
+- `docker-compose.prod.yml`
+- `scripts/entrypoint.sh`
+- `.dockerignore`
+- `.github/workflows/deploy.yml`
+- `docs/deployment.md`
+
+## Files Modified
+- `.env.example`
+- `config/settings/prod.py`
+- `pyproject.toml`
+
+## Test Status
+- 254 tests, 0 failures
+
+---
+
+# Stage 18: NEXT
