@@ -5,7 +5,6 @@ from django.test import TestCase, override_settings
 
 from classification.models import Classification, ClassificationAttribute
 from classification.services.persistence import (
-    _load_attribute_maps,
     _resolve_attribute,
     save_classification,
 )
@@ -21,7 +20,7 @@ FIXTURE_PATH = os.path.join(
 )
 
 
-def _ai_response(category_id=15, attributes=None):
+def _ai_response(category_id=15, attributes=None, confidence=85.0):
     """Return a minimal valid AI response dict."""
     return {
         "chosen_category_id": category_id,
@@ -31,15 +30,14 @@ def _ai_response(category_id=15, attributes=None):
             {"name": "Color", "value": "Brown"},
             {"name": "Material", "value": "Leather"},
         ],
-        "confidence": 85.0,
+        "confidence": confidence,
         "reasoning": "Looks like a sofa.",
     }
 
 
 class ResolveAttributeTest(TestCase):
     def _resolve(self, ai_attr):
-        attr_map, value_map = _load_attribute_maps()
-        return _resolve_attribute(ai_attr, attr_map, value_map)
+        return _resolve_attribute(ai_attr)
 
     def test_existing_attribute_resolves(self):
         call_command("load_taxonomy", source=FIXTURE_PATH)
@@ -111,7 +109,7 @@ class SaveClassificationTest(TestCase):
     def test_classification_row_created(self):
         product = self._make_product()
         ai_resp = _ai_response()
-        result = save_classification(product, ai_resp, 85.0)
+        result = save_classification(product, ai_resp)
         self.assertIsNotNone(result.id)
         self.assertEqual(result.category.id, 15)
         self.assertAlmostEqual(result.confidence, 85.0)
@@ -120,14 +118,14 @@ class SaveClassificationTest(TestCase):
     def test_classification_alternatives_saved(self):
         product = self._make_product()
         ai_resp = _ai_response()
-        result = save_classification(product, ai_resp, 85.0)
+        result = save_classification(product, ai_resp)
         self.assertEqual(len(result.alternatives), 1)
         self.assertEqual(result.alternatives[0]["category_id"], 19)
 
     def test_attributes_resolved_to_values(self):
         product = self._make_product()
         ai_resp = _ai_response()
-        save_classification(product, ai_resp, 85.0)
+        save_classification(product, ai_resp)
         attrs = ClassificationAttribute.objects.filter(classification__product=product)
         self.assertEqual(attrs.count(), 2)
         color_attr = attrs.get(attribute__name="Color")
@@ -138,7 +136,7 @@ class SaveClassificationTest(TestCase):
     def test_free_text_fallback(self):
         product = self._make_product()
         ai_resp = _ai_response(attributes=[{"name": "Color", "value": "Teal"}])
-        save_classification(product, ai_resp, 85.0)
+        save_classification(product, ai_resp)
         attr = ClassificationAttribute.objects.get(
             classification__product=product, attribute__name="Color"
         )
@@ -148,7 +146,7 @@ class SaveClassificationTest(TestCase):
     @override_settings(CLASSIFICATION_CONFIDENCE_THRESHOLD=70)
     def test_above_threshold_auto_approves(self):
         product = self._make_product()
-        result = save_classification(product, _ai_response(), 85.0)
+        result = save_classification(product, _ai_response())
         product.refresh_from_db()
         self.assertEqual(product.status, "done")
         self.assertEqual(result.status, Classification.Status.APPROVED)
@@ -157,7 +155,7 @@ class SaveClassificationTest(TestCase):
     @override_settings(CLASSIFICATION_CONFIDENCE_THRESHOLD=70)
     def test_below_threshold_sets_needs_review(self):
         product = self._make_product()
-        result = save_classification(product, _ai_response(), 50.0)
+        result = save_classification(product, _ai_response(confidence=50.0))
         product.refresh_from_db()
         self.assertEqual(product.status, "needs_review")
         self.assertEqual(result.status, Classification.Status.NEEDS_REVIEW)
@@ -165,15 +163,15 @@ class SaveClassificationTest(TestCase):
     @override_settings(CLASSIFICATION_CONFIDENCE_THRESHOLD=70)
     def test_exactly_at_threshold_auto_approves(self):
         product = self._make_product()
-        result = save_classification(product, _ai_response(), 70.0)
+        result = save_classification(product, _ai_response(confidence=70.0))
         product.refresh_from_db()
         self.assertEqual(product.status, "done")
         self.assertEqual(result.status, Classification.Status.APPROVED)
 
     def test_idempotent_on_rerun(self):
         product = self._make_product()
-        save_classification(product, _ai_response(), 85.0)
-        save_classification(product, _ai_response(), 90.0)
+        save_classification(product, _ai_response())
+        save_classification(product, _ai_response(confidence=90.0))
         self.assertEqual(Classification.objects.filter(product=product).count(), 1)
         c = Classification.objects.get(product=product)
         self.assertAlmostEqual(c.confidence, 90.0)
@@ -189,11 +187,11 @@ class SaveClassificationTest(TestCase):
             side_effect=RuntimeError("DB error"),
         ):
             with self.assertRaises(RuntimeError):
-                save_classification(product, ai_resp, 85.0)
+                save_classification(product, ai_resp)
         self.assertFalse(Classification.objects.filter(product=product).exists())
 
     def test_missing_category_raises(self):
         product = self._make_product()
         with self.assertRaises(Category.DoesNotExist):
-            save_classification(product, _ai_response(category_id=99999), 85.0)
+            save_classification(product, _ai_response(category_id=99999))
         self.assertFalse(Classification.objects.filter(product=product).exists())

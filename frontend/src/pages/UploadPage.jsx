@@ -1,23 +1,112 @@
-import { useUpload } from "../context/UploadContext";
+import { useState, useEffect, useRef } from "react";
+import { Link } from "react-router-dom";
+import {
+  uploadFile,
+  getImportStatus,
+  getLatestImport,
+  getJobStatus,
+} from "../api/client";
+
+const POLL_INTERVAL_MS = 2000;
 
 export default function UploadPage() {
-  const {
-    file,
-    setFile,
-    uploadProgress,
-    importData,
-    jobStatus,
-    error,
-    uploading,
-    uploadingLabel,
-    handleUpload,
-    resetUpload,
-  } = useUpload();
+  const [file, setFile] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [importData, setImportData] = useState(null);
+  const [jobStatus, setJobStatus] = useState(null);
+  const [error, setError] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const pollRef = useRef(null);
+
+  const stopPolling = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+
+  const startPolling = (importId) => {
+    stopPolling();
+    pollRef.current = setInterval(async () => {
+      try {
+        const [imp, jobs] = await Promise.all([
+          getImportStatus(importId),
+          getJobStatus(),
+        ]);
+        setImportData(imp);
+        setJobStatus(jobs);
+        if (
+          imp.status === "completed" &&
+          jobs &&
+          jobs.pending === 0 &&
+          jobs.processing === 0
+        ) {
+          stopPolling();
+        }
+      } catch {
+        /* ignore poll errors */
+      }
+    }, POLL_INTERVAL_MS);
+  };
+
+  useEffect(() => stopPolling, []);
+
+  // Restore the last import's progress when returning to this page.
+  useEffect(() => {
+    let cancelled = false;
+    getLatestImport()
+      .then(async (imp) => {
+        if (cancelled || !imp) return;
+        setImportData(imp);
+        try {
+          const jobs = await getJobStatus();
+          if (cancelled) return;
+          setJobStatus(jobs);
+          const busy =
+            imp.status === "processing" ||
+            (jobs && (jobs.pending > 0 || jobs.processing > 0));
+          if (busy) startPolling(imp.id);
+        } catch {
+          /* ignore */
+        }
+      })
+      .catch(() => {
+        /* no imports yet */
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleUpload = async (e) => {
+    e.preventDefault();
+    if (!file) return;
+    setError("");
+    setUploading(true);
+    setUploadProgress(0);
+    try {
+      const data = await uploadFile(file, setUploadProgress);
+      setImportData(data);
+      startPolling(data.id);
+    } catch (err) {
+      setError(err.message || "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const resetUpload = () => {
+    stopPolling();
+    setFile(null);
+    setUploadProgress(0);
+    setImportData(null);
+    setJobStatus(null);
+    setError("");
+    setUploading(false);
+  };
 
   // ---------- Import-row progress (file → DB) ----------
-  // Use total_rows from the ProductImport record (raw rows in the file).
-  // Falls back to jobStatus.import_total_rows streamed from the job-status
-  // endpoint so the bar works even before importData refreshes.
   const importTotalRows =
     (importData?.total_rows > 0 ? importData.total_rows : null) ||
     jobStatus?.import_total_rows ||
@@ -34,7 +123,6 @@ export default function UploadPage() {
     importData?.status === "completed" || importData?.status === "failed";
 
   // ---------- Classification progress ----------
-  // Denominator = total rows in the file; numerator = done + needs_review + failed
   const classifiedCount = jobStatus
     ? jobStatus.done + jobStatus.needs_review + jobStatus.failed
     : 0;
@@ -49,14 +137,27 @@ export default function UploadPage() {
     (importedRows < importTotalRows || importTotalRows === 0);
   const isClassifying =
     jobStatus && (jobStatus.pending > 0 || jobStatus.processing > 0);
-  const allDone =
-    importDone &&
-    !isClassifying &&
-    classifiedCount > 0;
+  const allDone = importDone && !isClassifying && classifiedCount > 0;
 
   return (
     <div>
-      <h2>Upload Products</h2>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "1rem",
+        }}
+      >
+        <h2>Upload Products</h2>
+        <Link
+          id="view-products-btn"
+          className="btn btn-success"
+          to="/products"
+        >
+          View Products
+        </Link>
+      </div>
       <div className="card" style={{ marginTop: "1rem" }}>
         <form onSubmit={handleUpload}>
           <div className="field">
@@ -76,7 +177,7 @@ export default function UploadPage() {
             >
               {uploading ? (
                 <>
-                  <span className="spinner" /> {uploadingLabel}
+                  <span className="spinner" /> Uploading...
                 </>
               ) : (
                 "Upload & Process"
@@ -95,7 +196,6 @@ export default function UploadPage() {
           </div>
         </form>
 
-        {/* Upload-to-server progress (XHR progress event) */}
         {uploading && (
           <div style={{ marginTop: "1rem" }}>
             <div className="progress-bar">
@@ -117,21 +217,19 @@ export default function UploadPage() {
           <h3>Import #{importData.id}</h3>
           <p>
             Status: <strong>{importData.status}</strong>
-            {importData.status === "completed" && " — "}
             {importData.status === "completed" &&
-              `${importData.imported_rows} rows inserted`}
+              ` — ${importData.imported_rows} rows inserted`}
             {importData.failed_rows > 0 &&
               `, ${importData.failed_rows} failed`}
           </p>
         </div>
       )}
 
-      {/* ---- Live streaming progress ---- */}
+      {/* ---- Live progress ---- */}
       {(importData || jobStatus) && (
         <div className="card" style={{ marginTop: "1rem" }}>
           <h3>Processing Status</h3>
 
-          {/* Row counts dashboard */}
           {jobStatus && (
             <div className="status-grid">
               <div className="status-item">
@@ -157,7 +255,6 @@ export default function UploadPage() {
             </div>
           )}
 
-          {/* Bar 1 — Import progress (rows read from file → saved to DB) */}
           {importTotalRows > 0 && (
             <div style={{ marginTop: "1rem" }}>
               <div
@@ -191,7 +288,6 @@ export default function UploadPage() {
             </div>
           )}
 
-          {/* Bar 2 — Classification progress */}
           {classifyDenominator > 0 && (
             <div style={{ marginTop: "0.75rem" }}>
               <div
@@ -221,7 +317,7 @@ export default function UploadPage() {
                   className="progress-bar-fill"
                   style={{
                     width: `${classifyPercent}%`,
-                    background: allDone ? "#22c55e" : "#ffffff",
+                    background: allDone ? "#22c55e" : undefined,
                   }}
                 />
               </div>
@@ -230,7 +326,11 @@ export default function UploadPage() {
 
           {allDone && (
             <p style={{ marginTop: "0.75rem", color: "#22c55e", fontSize: "0.95rem" }}>
-              ✓ All done — view results on the Products page.
+              ✓ All done —{" "}
+              <Link to="/products" style={{ color: "#22c55e", fontWeight: 600 }}>
+                view results on the Products page
+              </Link>
+              .
             </p>
           )}
         </div>

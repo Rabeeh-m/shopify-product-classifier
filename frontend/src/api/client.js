@@ -51,6 +51,10 @@ export function getImportStatus(id) {
   return request(`/api/products/import/${id}/`);
 }
 
+export function getLatestImport() {
+  return request("/api/products/import/latest/");
+}
+
 export function getJobStatus() {
   return request("/api/classification/jobs/status/");
 }
@@ -71,10 +75,6 @@ export function getClassifiedProducts({ page = 1, search = "", status, categoryI
   if (status) params.set("status", status);
   if (categoryId) params.set("category", categoryId);
   return request(`/api/classification/products/?${params.toString()}`);
-}
-
-export function getReviewDetail(id) {
-  return request(`/api/classification/review/${id}/`);
 }
 
 export function approveClassification(id) {

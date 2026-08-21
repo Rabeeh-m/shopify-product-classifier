@@ -15,10 +15,6 @@ from classification.exceptions import AIClientError, AITimeoutError
 
 logger = logging.getLogger(__name__)
 
-# Future option: another provider client could be added here with the same
-# interface. The function signatures below are provider-agnostic; only
-# _get_gemini_client needs swapping or wrapping.
-
 # Matches hints like "Please retry in 48.113410" embedded in API error
 # messages (Gemini includes these on 429 RESOURCE_EXHAUSTED).
 _RETRY_DELAY_RE = re.compile(
@@ -30,13 +26,8 @@ _RETRY_DELAY_RE = re.compile(
 _MAX_RETRY_DELAY_SECONDS = 120.0
 
 
-class _RateLimiter:
-    """Thread-safe sliding-window rate limiter (requests per minute).
-
-    All worker threads in the process share one instance, keeping the
-    total outbound request rate within the provider quota instead of
-    discovering the limit via 429 responses.
-    """
+class RateLimiter:
+    """Thread-safe sliding-window rate limiter (requests per minute)."""
 
     def __init__(self, rpm):
         self.rpm = rpm
@@ -58,23 +49,21 @@ class _RateLimiter:
             time.sleep(max(wait, 0.05))
 
 
-_limiters = {}
-_limiters_lock = threading.Lock()
+_limiter = None
+_limiter_lock = threading.Lock()
 
 
 def _get_rate_limiter():
-    """Return the shared limiter for the configured RPM, or None if disabled."""
     from django.conf import settings
 
+    global _limiter
     rpm = int(getattr(settings, "AI_RATE_LIMIT_RPM", 0) or 0)
     if rpm <= 0:
         return None
-    with _limiters_lock:
-        limiter = _limiters.get(rpm)
-        if limiter is None:
-            limiter = _RateLimiter(rpm)
-            _limiters[rpm] = limiter
-        return limiter
+    with _limiter_lock:
+        if _limiter is None:
+            _limiter = RateLimiter(rpm)
+        return _limiter
 
 
 def _extract_retry_delay(exc):
@@ -98,11 +87,6 @@ def _compute_backoff(attempt, base_delay, server_delay=None):
 
 
 def _get_gemini_client(timeout=30):
-    """Lazily instantiate and return a Google GenAI (Gemini) client.
-
-    Raises AIClientError immediately if the API key is missing, so callers
-    fail fast rather than hitting a cryptic error mid-request.
-    """
     api_key = os.environ.get("GEMINI_API_KEY", "")
     if not api_key:
         raise AIClientError(
@@ -118,22 +102,8 @@ def _get_gemini_client(timeout=30):
 def call_ai(prompt, *, model=None, max_tokens=1024, timeout=30):
     """Send a prompt to the AI model and return the raw text response.
 
-    Outbound requests are paced through a shared rate limiter
-    (settings.AI_RATE_LIMIT_RPM; 0 disables). Failed calls are retried with
-    exponential backoff + jitter, honoring any server-provided retry delay.
-
-    Args:
-        prompt: The full user prompt string.
-        model: Model name override. Defaults to settings.AI_MODEL_NAME.
-        max_tokens: Max tokens in the response.
-        timeout: Request timeout in seconds.
-
-    Returns:
-        The model's response as a string.
-
-    Raises:
-        AIClientError on API errors (after retries are exhausted).
-        AITimeoutError on explicit timeout failures.
+    Requests are paced through the shared rate limiter; transient failures
+    retry with exponential backoff honoring any server-provided delay.
     """
     from django.conf import settings
 
@@ -160,36 +130,21 @@ def call_ai(prompt, *, model=None, max_tokens=1024, timeout=30):
                 ),
             )
             latency_ms = (time.monotonic() - start) * 1000
-            text = response.text
-            usage = response.usage_metadata
-            tokens_in = getattr(usage, "prompt_token_count", None)
-            tokens_out = getattr(usage, "candidates_token_count", None)
             logger.info(
-                "ai_call model=%s attempt=%d latency_ms=%.0f "
-                "tokens_in=%s tokens_out=%s",
+                "ai_call model=%s attempt=%d latency_ms=%.0f",
                 model,
                 attempt,
                 latency_ms,
-                tokens_in,
-                tokens_out,
             )
-            return text
+            return response.text
         except httpx.TimeoutException as exc:
-            latency_ms = (time.monotonic() - start) * 1000
             last_exc = AITimeoutError(
                 f"AI API timed out after {timeout}s (attempt {attempt}/"
                 f"{max_retries}): {exc}"
             )
-            logger.warning(
-                "ai_timeout attempt=%d/%d latency_ms=%.0f: %s",
-                attempt,
-                max_retries,
-                latency_ms,
-                exc,
-            )
+            logger.warning("ai_timeout attempt=%d/%d: %s", attempt, max_retries, exc)
             server_delay = _extract_retry_delay(exc)
         except genai_errors.APIError as exc:
-            latency_ms = (time.monotonic() - start) * 1000
             status = exc.code
             if status >= 500 or status == 429:
                 last_exc = AIClientError(
@@ -197,11 +152,10 @@ def call_ai(prompt, *, model=None, max_tokens=1024, timeout=30):
                     f"{max_retries}): {exc}"
                 )
                 logger.warning(
-                    "ai_error status=%d attempt=%d/%d latency_ms=%.0f: %s",
+                    "ai_error status=%d attempt=%d/%d: %s",
                     status,
                     attempt,
                     max_retries,
-                    latency_ms,
                     exc,
                 )
             else:

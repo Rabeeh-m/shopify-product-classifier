@@ -1,3 +1,2 @@
-from config.celery import app as celery_app
-
-__all__ = ["celery_app"]
+# No background-task framework: classification runs on a daemon thread
+# started by the upload view (see classification.tasks.start_import_background).

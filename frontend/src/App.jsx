@@ -3,7 +3,6 @@ import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import UploadPage from "./pages/UploadPage";
 import ReviewPage from "./pages/ReviewPage";
-import ReviewDetail from "./pages/ReviewDetail";
 import ClassifiedProducts from "./pages/ClassifiedProducts";
 
 export default function App() {
@@ -15,7 +14,6 @@ export default function App() {
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/products" element={<ClassifiedProducts />} />
           <Route path="/review" element={<ReviewPage />} />
-          <Route path="/review/:id" element={<ReviewDetail />} />
           <Route path="*" element={<Navigate to="/upload" replace />} />
         </Routes>
       </main>

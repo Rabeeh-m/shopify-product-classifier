@@ -26,7 +26,6 @@ INSTALLED_APPS = [
     "taxonomy",
     "products",
     "classification",
-    "django_celery_results",
 ]
 
 MIDDLEWARE = [
@@ -64,14 +63,6 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / "db.sqlite3",
-        "OPTIONS": {
-            # Wait up to 60s for a writer instead of instantly raising
-            # 'database is locked' when several worker processes collide.
-            "timeout": 60,
-            # WAL lets readers proceed while a write transaction is open,
-            # which removes most cross-process contention during imports.
-            "init_command": "PRAGMA journal_mode=WAL;",
-        },
     }
 }
 
@@ -100,10 +91,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 MAX_UPLOAD_SIZE_MB = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "10"))
 ALLOWED_UPLOAD_EXTENSIONS = {".csv", ".xlsx"}
 
-CLASSIFICATION_CANDIDATE_LIMIT = int(
-    os.environ.get("CLASSIFICATION_CANDIDATE_LIMIT", "15")
-)
-
 AI_MODEL_NAME = os.environ.get("AI_MODEL_NAME", "gemini-3.5-flash-lite")
 AI_REQUEST_TIMEOUT = int(os.environ.get("AI_REQUEST_TIMEOUT", "30"))
 # Client-side requests-per-minute cap shared by all worker threads.
@@ -119,27 +106,7 @@ CLASSIFICATION_CONCURRENCY_LIMIT = int(
     os.environ.get("CLASSIFICATION_CONCURRENCY_LIMIT", "5")
 )
 
-# Rule-based classification (runs before AI to save API quota).
-RULE_CLASSIFICATION_ENABLED = (
-    os.environ.get("RULE_CLASSIFICATION_ENABLED", "true").lower() == "true"
-)
-RULE_AUTO_CLASSIFY_MIN_SCORE = float(
-    os.environ.get("RULE_AUTO_CLASSIFY_MIN_SCORE", "6.0")
-)
-RULE_MIN_SCORE_GAP = float(os.environ.get("RULE_MIN_SCORE_GAP", "2.0"))
-RULE_VENDOR_CONFIDENCE = float(os.environ.get("RULE_VENDOR_CONFIDENCE", "90"))
-RULE_KEYWORD_CONFIDENCE_BASE = float(
-    os.environ.get("RULE_KEYWORD_CONFIDENCE_BASE", "70")
-)
-
 TAXONOMY_CACHE_TTL = int(os.environ.get("TAXONOMY_CACHE_TTL", "3600"))
-
-CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
-CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", "django-db")
-CELERY_ACCEPT_CONTENT = ["json"]
-CELERY_TASK_SERIALIZER = "json"
-CELERY_RESULT_SERIALIZER = "json"
-CELERY_TIMEZONE = TIME_ZONE
 
 CACHES = {
     "default": {

@@ -1,6 +1,8 @@
 import json
 import os
+import re
 import tempfile
+from concurrent.futures import Future
 from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -8,6 +10,7 @@ from django.core.management import call_command
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
+from classification.exceptions import AIClientError
 from classification.models import Classification
 from products.models import Product
 from taxonomy.models import Category
@@ -31,8 +34,7 @@ _SAMPLE_CSV = (
 _SINGLE_CSV = b"title,description\nLeather Sofa,A brown sofa\n"
 
 
-def _mock_ai_response_for_category(cat_id):
-    """Build a mock AI response targeting a specific category."""
+def _ai_response_for_category(cat_id, confidence=55.0):
     return json.dumps(
         {
             "chosen_category_id": cat_id,
@@ -41,10 +43,43 @@ def _mock_ai_response_for_category(cat_id):
                 {"name": "Color", "value": "Brown"},
                 {"name": "Material", "value": "Leather"},
             ],
-            "confidence": 85.0,
+            "confidence": confidence,
             "reasoning": "Looks like furniture.",
         }
     )
+
+
+def _run_sync_import(import_id):
+    """Run the exact pipeline the background thread would run."""
+    from classification.tasks import import_products, process_products
+
+    import_products(import_id)
+    process_products(import_id=import_id)
+
+
+class _InlineExecutor:
+    """Drop-in for ThreadPoolExecutor that runs futures on the calling thread.
+
+    Keeps worker DB access on the test connection, avoiding SQLite locking
+    between the TestCase transaction and separate worker connections.
+    """
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def submit(self, fn, *args, **kwargs):
+        future = Future()
+        try:
+            future.set_result(fn(*args, **kwargs))
+        except Exception as exc:
+            future.set_exception(exc)
+        return future
 
 
 @override_settings(MEDIA_ROOT=TEST_MEDIA)
@@ -58,44 +93,39 @@ class EndToEndFlowTest(TestCase):
     def setUp(self):
         self.client = APIClient()
 
+    def _upload(self, data, filename="products.csv"):
+        upload = SimpleUploadedFile(filename, data, content_type="text/csv")
+        with patch(
+            "classification.tasks.start_import_background",
+            side_effect=_run_sync_import,
+        ):
+            return self.client.post(
+                "/api/products/import/", {"file": upload}, format="multipart"
+            )
+
     def test_full_import_classify_review_approve_flow(self):
-        upload = SimpleUploadedFile(
-            "products.csv", _SAMPLE_CSV, content_type="text/csv"
-        )
-        import_resp = self.client.post(
-            "/api/products/import/",
-            {"file": upload},
-            format="multipart",
-        )
-        self.assertEqual(import_resp.status_code, 201)
-        self.assertEqual(import_resp.data["imported_rows"], 3)
-
-        products = list(Product.objects.all().order_by("id"))
-        self.assertEqual(len(products), 3)
-        for p in products:
-            self.assertEqual(p.status, "pending")
-
-        from classification.services.candidate_finder import find_candidates
-        from classification.services.classifier import classify_product
-        from classification.services.confidence import calculate_confidence
-        from classification.services.persistence import save_classification
-
         def _mock_call_ai(prompt, **kwargs):
-            import re
-
             match = re.search(r"id: (\d+)", prompt)
             first_id = int(match.group(1)) if match else 1
-            return _mock_ai_response_for_category(first_id)
+            return _ai_response_for_category(first_id, confidence=55.0)
 
         with patch(
             "classification.services.classifier.call_ai",
             side_effect=_mock_call_ai,
+        ), patch(
+            "classification.tasks.ThreadPoolExecutor", _InlineExecutor
         ):
-            for product in products:
-                candidates = find_candidates(product)
-                ai_response = classify_product(product, candidates)
-                final_confidence = calculate_confidence(product, ai_response)
-                save_classification(product, ai_response, final_confidence)
+            resp = self._upload(_SAMPLE_CSV)
+
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.data["status"], "completed")
+        self.assertEqual(resp.data["imported_rows"], 3)
+
+        # Low mock confidence -> everything lands in the review queue.
+        products = list(Product.objects.all().order_by("id"))
+        self.assertEqual(len(products), 3)
+        for p in products:
+            self.assertEqual(p.status, "needs_review")
 
         classifications = list(
             Classification.objects.select_related("product", "category").all()
@@ -105,10 +135,6 @@ class EndToEndFlowTest(TestCase):
             self.assertEqual(cls_obj.status, Classification.Status.NEEDS_REVIEW)
             self.assertIsNotNone(cls_obj.category)
             self.assertGreater(cls_obj.confidence, 0)
-
-        for p in products:
-            p.refresh_from_db()
-            self.assertIn(p.status, ["done", "needs_review"])
 
         list_resp = self.client.get("/api/classification/review/")
         self.assertEqual(list_resp.status_code, 200)
@@ -136,36 +162,22 @@ class EndToEndFlowTest(TestCase):
         self.assertEqual(list_resp2.data["count"], 2)
 
     def test_correct_flow_updates_category_and_attributes(self):
-        upload = SimpleUploadedFile("single.csv", _SINGLE_CSV, content_type="text/csv")
-        import_resp = self.client.post(
-            "/api/products/import/",
-            {"file": upload},
-            format="multipart",
-        )
-        self.assertEqual(import_resp.status_code, 201)
-
-        product = Product.objects.first()
-
-        from classification.services.candidate_finder import find_candidates
-        from classification.services.classifier import classify_product
-        from classification.services.confidence import calculate_confidence
-        from classification.services.persistence import save_classification
-
         def _mock_call_ai(prompt, **kwargs):
-            import re
-
             match = re.search(r"id: (\d+)", prompt)
             first_id = int(match.group(1)) if match else 1
-            return _mock_ai_response_for_category(first_id)
+            return _ai_response_for_category(first_id, confidence=55.0)
 
         with patch(
             "classification.services.classifier.call_ai",
             side_effect=_mock_call_ai,
+        ), patch(
+            "classification.tasks.ThreadPoolExecutor", _InlineExecutor
         ):
-            candidates = find_candidates(product)
-            ai_response = classify_product(product, candidates)
-            final_confidence = calculate_confidence(product, ai_response)
-            cls_obj = save_classification(product, ai_response, final_confidence)
+            resp = self._upload(_SINGLE_CSV, "single.csv")
+        self.assertEqual(resp.status_code, 201)
+
+        cls_obj = Classification.objects.select_related("category").first()
+        self.assertIsNotNone(cls_obj)
 
         other_cat = Category.objects.exclude(id=cls_obj.category_id).first()
 
@@ -190,38 +202,74 @@ class EndToEndFlowTest(TestCase):
         self.assertEqual(attr.free_text_value, "CustomTeal")
         self.assertEqual(cls_obj.product.status, "done")
 
-    def test_broken_image_doesnt_stop_batch(self):
-        """A product with a broken/missing image doesn't block others."""
-        csv_data = b"title,description,brand,product_type\n"
-        csv_data += b"Good Product A,Desc A,Brand A,Type A\n"
-        csv_data += b"Good Product B,Desc B,Brand B,Type B\n"
-        upload = SimpleUploadedFile("batch.csv", csv_data, content_type="text/csv")
-        import_resp = self.client.post(
-            "/api/products/import/",
-            {"file": upload},
-            format="multipart",
+    def test_one_product_failing_does_not_stop_batch(self):
+        """An AI failure on one product records FAILED without blocking others."""
+        csv_data = (
+            b"title,description,brand,product_type\n"
+            b"Good Product A,Desc A,Brand A,Type A\n"
+            b"Good Product B,Desc B,Brand B,Type B\n"
         )
-        self.assertEqual(import_resp.status_code, 201)
 
-        from classification.tasks import process_product_batch
+        def _mock_call_ai(prompt, **kwargs):
+            if "Good Product A" in prompt:
+                raise RuntimeError("Image download failed")
+            match = re.search(r"id: (\d+)", prompt)
+            first_id = int(match.group(1)) if match else 1
+            return _ai_response_for_category(first_id, confidence=55.0)
 
-        product_ids = list(Product.objects.values_list("id", flat=True))
+        with patch(
+            "classification.services.classifier.call_ai",
+            side_effect=_mock_call_ai,
+        ), patch("classification.tasks.ThreadPoolExecutor", _InlineExecutor):
+            resp = self._upload(csv_data, "batch.csv")
 
-        with patch("classification.tasks._run_pipeline") as mock_pipeline:
-            def side_effect(product):
-                if product.title == "Good Product A":
-                    raise RuntimeError("Image download failed")
-                return None
-            mock_pipeline.side_effect = side_effect
-
-            result = process_product_batch(product_ids)
-
-        self.assertEqual(result["processed"], 2)
-        self.assertEqual(result["failed"], 1)
+        self.assertEqual(resp.status_code, 201)
 
         product_a = Product.objects.get(title="Good Product A")
         self.assertEqual(product_a.status, Product.Status.FAILED)
+        self.assertTrue(product_a.error_message)
+        self.assertIsNone(product_a.processing_started_at)
 
         product_b = Product.objects.get(title="Good Product B")
         self.assertNotEqual(product_b.status, Product.Status.FAILED)
         self.assertIsNone(product_b.processing_started_at)
+
+    def test_rerun_retries_failed_products(self):
+        """A second pass picks up FAILED products and clears their errors."""
+        csv_data = (
+            b"title,description\n"
+            b"Recover Me,Some description\n"
+        )
+
+        def _failing(prompt, **kwargs):
+            raise AIClientError("quota exhausted")
+
+        with patch(
+            "classification.services.classifier.call_ai", side_effect=_failing
+        ), patch("classification.tasks.ThreadPoolExecutor", _InlineExecutor):
+            self._upload(csv_data, "fail.csv")
+
+        product = Product.objects.get(title="Recover Me")
+        self.assertEqual(product.status, Product.Status.FAILED)
+        self.assertTrue(product.error_message)
+
+        # Quota resets / billing fixed: same command now succeeds.
+        def _ok(prompt, **kwargs):
+            match = re.search(r"id: (\d+)", prompt)
+            first_id = int(match.group(1)) if match else 1
+            return _ai_response_for_category(first_id, confidence=55.0)
+
+        from classification.tasks import process_products
+
+        with patch(
+            "classification.services.classifier.call_ai", side_effect=_ok
+        ), patch("classification.tasks.ThreadPoolExecutor", _InlineExecutor):
+            result = process_products()
+
+        self.assertEqual(result["processed"], 1)
+        self.assertEqual(result["failed"], 0)
+
+        product.refresh_from_db()
+        self.assertEqual(product.status, "needs_review")
+        self.assertEqual(product.error_message, "")
+        self.assertIsNotNone(Classification.objects.filter(product=product).first())

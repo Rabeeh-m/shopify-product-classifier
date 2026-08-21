@@ -2,6 +2,7 @@ from django.urls import path
 
 from products.views import (
     ClearAllProductsView,
+    LatestProductImportView,
     ProductImportCreateView,
     ProductImportDetailView,
 )
@@ -13,6 +14,11 @@ urlpatterns = [
         "api/products/import/",
         ProductImportCreateView.as_view(),
         name="product-import-create",
+    ),
+    path(
+        "api/products/import/latest/",
+        LatestProductImportView.as_view(),
+        name="product-import-latest",
     ),
     path(
         "api/products/import/<int:pk>/",

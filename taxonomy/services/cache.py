@@ -1,7 +1,7 @@
-"""Taxonomy caching layer — Redis-backed with in-memory fallback.
+"""Taxonomy caching layer (local memory).
 
 Loads the full category list once per cache TTL, avoiding repeated DB
-hits in the candidate_finder and frontend category picker.
+hits during classification and in the frontend category picker.
 
 Cache key: "taxonomy:all_categories"
 TTL: configurable via TAXONOMY_CACHE_TTL (default 3600s = 1 hour)
@@ -25,7 +25,7 @@ def get_ttl():
 
 
 def get_all_categories():
-    """Return all Category objects, cached in Redis (or local memory).
+    """Return all Category objects, cached locally.
 
     Returns a list (not a queryset) to avoid lazy-evaluation surprises.
     """

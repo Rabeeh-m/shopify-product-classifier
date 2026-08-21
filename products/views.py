@@ -30,14 +30,31 @@ class ProductImportCreateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Dispatch background task — this returns immediately so the HTTP
-        # response comes back in < 1 s regardless of file size.
-        from classification.tasks import import_and_classify_products
+        # Run import + classification on a background thread — this returns
+        # immediately so the HTTP response comes back in < 1 s.
+        from classification.tasks import start_import_background
 
-        import_and_classify_products.delay(import_obj.id)
+        start_import_background(import_obj.id)
+
+        # Pick up any progress made by the worker before serialization
+        # (e.g. when running the pipeline synchronously in tests).
+        import_obj.refresh_from_db()
 
         serializer = ProductImportSerializer(import_obj)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class LatestProductImportView(APIView):
+    def get(self, request):
+        """Return the most recent import so the UI can restore progress."""
+        import_obj = ProductImport.objects.order_by("-id").first()
+        if import_obj is None:
+            return Response(
+                {"error": "No imports yet."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        serializer = ProductImportSerializer(import_obj)
+        return Response(serializer.data)
 
 
 class ProductImportDetailView(APIView):

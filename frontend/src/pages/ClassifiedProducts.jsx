@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { getClassifiedProducts, clearAllProducts } from "../api/client";
-import { useUpload } from "../context/UploadContext";
+import { getClassifiedProducts, getJobStatus, clearAllProducts } from "../api/client";
 
 const PAGE_SIZE = 20;
 
@@ -77,140 +76,6 @@ function ProductCard({ item }) {
   );
 }
 
-/**
- * Single hierarchical category section. Options come from the products in
- * the current listing (passed up by the API), not the static taxonomy.
- * Click a name to filter; click the ">" icon to expand its subcategories.
- */
-function HierarchicalCategorySelect({ tree, categoryId, subcategoryId, onSelect }) {
-  const [open, setOpen] = useState(false);
-  const [expanded, setExpanded] = useState({});
-  const containerRef = useRef(null);
-
-  const selectedSub = tree
-    .flatMap((r) => r.children)
-    .find((c) => String(c.id) === String(subcategoryId));
-  const selectedRoot =
-    tree.find((r) => String(r.id) === String(categoryId)) ||
-    (selectedSub && tree.find((r) => r.children.includes(selectedSub)));
-
-  // Auto-expand the branch holding the current selection when opening
-  useEffect(() => {
-    if (open && selectedRoot) {
-      setExpanded((prev) => ({ ...prev, [selectedRoot.id]: true }));
-    }
-  }, [open, selectedRoot]);
-
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return;
-    const onDocClick = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, [open]);
-
-  const triggerLabel = selectedSub
-    ? `${selectedRoot.name} > ${selectedSub.name}`
-    : selectedRoot
-      ? selectedRoot.name
-      : "All Categories";
-
-  const select = (rootId, subId) => {
-    onSelect(rootId, subId);
-    setOpen(false);
-  };
-
-  const toggleExpand = (id) =>
-    setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
-
-  return (
-    <div className="hier-select" ref={containerRef}>
-      <button
-        id="category-filter"
-        type="button"
-        className={`hier-trigger ${open ? "open" : ""}`}
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-      >
-        <span className="hier-trigger-label">{triggerLabel}</span>
-        <span className="caret">▼</span>
-      </button>
-
-      {open && (
-        <div className="hier-panel">
-          <div className={`hier-item-row ${!categoryId && !subcategoryId ? "active" : ""}`}>
-            <button
-              type="button"
-              className="hier-label"
-              onClick={() => select("", "")}
-            >
-              All Categories
-            </button>
-          </div>
-
-          {tree.length === 0 && (
-            <div className="hier-empty">No categorized products listed.</div>
-          )}
-
-          {tree.map((root) => {
-            const rootActive =
-              String(root.id) === String(categoryId) && !subcategoryId;
-            const isOpen = !!expanded[root.id];
-            return (
-              <div key={root.id}>
-                <div className={`hier-item-row ${rootActive ? "active" : ""}`}>
-                  <button
-                    type="button"
-                    className={`hier-label ${rootActive ? "active" : ""}`}
-                    onClick={() => select(String(root.id), "")}
-                  >
-                    <span>{root.name}</span>
-                    <span className="hier-count">{root.count}</span>
-                  </button>
-                  {root.children.length > 0 && (
-                    <button
-                      type="button"
-                      className={`hier-toggle ${isOpen ? "open" : ""}`}
-                      aria-label={`${isOpen ? "Collapse" : "Expand"} ${root.name} subcategories`}
-                      onClick={() => toggleExpand(root.id)}
-                    >
-                      &gt;
-                    </button>
-                  )}
-                </div>
-
-                {isOpen &&
-                  root.children.map((sub) => {
-                    const subActive = String(sub.id) === String(subcategoryId);
-                    return (
-                      <div
-                        key={sub.id}
-                        className={`hier-item-row hier-sublist-row ${subActive ? "active" : ""}`}
-                      >
-                        <button
-                          type="button"
-                          className={`hier-label ${subActive ? "active" : ""}`}
-                          onClick={() => select(String(root.id), String(sub.id))}
-                        >
-                          <span>{sub.name}</span>
-                          <span className="hier-count">{sub.count}</span>
-                        </button>
-                      </div>
-                    );
-                  })}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
 const POLL_INTERVAL_MS = 3000; // re-fetch while jobs are running
 
 export default function ClassifiedProducts() {
@@ -221,22 +86,15 @@ export default function ClassifiedProducts() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [categoryId, setCategoryId] = useState("");
-  const [subcategoryId, setSubcategoryId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [clearing, setClearing] = useState(false);
 
-  // Subscribe to global job status so we know when to auto-refresh
-  const { jobStatus } = useUpload();
-  const isProcessing =
-    jobStatus && (jobStatus.pending > 0 || jobStatus.processing > 0);
-
-  // A selected subcategory takes precedence over its parent category
-  const activeCategoryId = subcategoryId || categoryId;
+  // Live-refresh while products are being classified
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const totalPages = Math.max(1, Math.ceil(count / PAGE_SIZE));
 
-  // Keep a ref so the polling interval can always read latest filters/page
   const fetchRef = useRef(null);
 
   const fetchProducts = () => {
@@ -245,7 +103,7 @@ export default function ClassifiedProducts() {
       page,
       search,
       status: statusFilter,
-      categoryId: activeCategoryId,
+      categoryId,
     })
       .then((data) => {
         setItems(data.results || []);
@@ -261,36 +119,43 @@ export default function ClassifiedProducts() {
 
   fetchRef.current = fetchProducts;
 
-  // Initial load + re-load when filters/page change
   useEffect(() => {
     setLoading(true);
     fetchRef.current();
-  }, [page, search, statusFilter, activeCategoryId]);
+  }, [page, search, statusFilter, categoryId]);
 
-  // Live polling while there are pending/processing jobs
+  // Poll while any classification work is in flight
   useEffect(() => {
-    if (!isProcessing) return;
-
-    const id = setInterval(() => {
-      fetchRef.current();
-    }, POLL_INTERVAL_MS);
-
-    return () => clearInterval(id);
-  }, [isProcessing]);
+    let stopped = false;
+    let timer = null;
+    const tick = async () => {
+      try {
+        const jobs = await getJobStatus();
+        if (stopped) return;
+        const busy = jobs.pending > 0 || jobs.processing > 0;
+        setIsProcessing(busy);
+        if (busy) {
+          fetchRef.current();
+          timer = setTimeout(tick, POLL_INTERVAL_MS);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    tick();
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
 
   const handleSearch = (e) => {
     e.preventDefault();
     setPage(1);
   };
 
-  const handleStatusChange = (e) => {
-    setStatusFilter(e.target.value);
-    setPage(1);
-  };
-
-  const handleCategorySelect = (rootId, subId) => {
-    setCategoryId(rootId);
-    setSubcategoryId(subId);
+  const handleCategoryChange = (e) => {
+    setCategoryId(e.target.value);
     setPage(1);
   };
 
@@ -331,7 +196,10 @@ export default function ClassifiedProducts() {
         <span style={{ color: "#666" }}>{count.toLocaleString()} products</span>
         {isProcessing && (
           <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
-            <span className="spinner" style={{ width: "0.9rem", height: "0.9rem", borderWidth: "1.5px" }} />{" "}
+            <span
+              className="spinner"
+              style={{ width: "0.9rem", height: "0.9rem", borderWidth: "1.5px" }}
+            />{" "}
             Live updating…
           </span>
         )}
@@ -364,19 +232,38 @@ export default function ClassifiedProducts() {
         <select
           id="status-filter"
           value={statusFilter}
-          onChange={handleStatusChange}
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            setPage(1);
+          }}
         >
           <option value="">All Statuses</option>
           <option value="approved">Approved</option>
           <option value="needs_review">Needs Review</option>
           <option value="failed">Failed</option>
         </select>
-        <HierarchicalCategorySelect
-          tree={availableCategories}
-          categoryId={categoryId}
-          subcategoryId={subcategoryId}
-          onSelect={handleCategorySelect}
-        />
+        <select
+          id="category-filter"
+          value={categoryId}
+          onChange={handleCategoryChange}
+        >
+          <option value="">All Categories</option>
+          {availableCategories.map((root) =>
+            root.children.length > 0 ? (
+              <optgroup key={root.id} label={`${root.name} (${root.count})`}>
+                {root.children.map((sub) => (
+                  <option key={sub.id} value={sub.id}>
+                    {sub.name} ({sub.count})
+                  </option>
+                ))}
+              </optgroup>
+            ) : (
+              <option key={root.id} value={root.id}>
+                {root.name} ({root.count})
+              </option>
+            )
+          )}
+        </select>
       </div>
 
       {error && <div className="error">{error}</div>}
@@ -387,11 +274,7 @@ export default function ClassifiedProducts() {
         </p>
       ) : items.length === 0 ? (
         <div className="card">
-          <p>
-            {isProcessing
-              ? "Products are being classified — they will appear here shortly…"
-              : "No classified products found."}
-          </p>
+          <p>No classified products found.</p>
         </div>
       ) : (
         <>

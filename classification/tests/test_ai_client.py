@@ -8,10 +8,10 @@ from google.genai import errors as genai_errors
 
 from classification.exceptions import AIClientError, AITimeoutError
 from classification.services.ai_client import (
+    RateLimiter,
     _compute_backoff,
     _extract_retry_delay,
     _get_rate_limiter,
-    _RateLimiter,
     call_ai,
 )
 
@@ -218,7 +218,7 @@ class RateLimiterTest(TestCase):
 
     @override_settings(AI_RATE_LIMIT_RPM=0)
     def test_acquire_allows_burst_up_to_limit(self):
-        limiter = _RateLimiter(3)
+        limiter = RateLimiter(3)
         start = time.monotonic()
         for _ in range(3):
             limiter.acquire()
@@ -226,7 +226,7 @@ class RateLimiterTest(TestCase):
 
     @override_settings(AI_RATE_LIMIT_RPM=0)
     def test_acquire_blocks_beyond_limit(self):
-        limiter = _RateLimiter(2)
+        limiter = RateLimiter(2)
         limiter.acquire()
         limiter.acquire()
 
@@ -245,7 +245,7 @@ class RateLimiterTest(TestCase):
     @override_settings(AI_RATE_LIMIT_RPM=0)
     def test_concurrent_threads_respect_limit(self):
         rpm = 5
-        limiter = _RateLimiter(rpm)
+        limiter = RateLimiter(rpm)
         allowed = []
         lock = threading.Lock()
 

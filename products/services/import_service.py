@@ -6,9 +6,8 @@ import os
 import re
 
 from django.conf import settings
-from django.utils import timezone as tz
 
-from products.models import Product, ProductImage, ProductImport
+from products.models import ProductImport
 
 logger = logging.getLogger(__name__)
 
@@ -279,96 +278,4 @@ def validate_and_save_import(file_obj, filename):
         imported_rows=0,
         failed_rows=0,
     )
-    return import_obj
-
-
-# ---------------------------------------------------------------------------
-# Legacy synchronous path (kept for tests / management commands).
-# ---------------------------------------------------------------------------
-
-def _create_products(rows, import_obj):
-    """Create Product and ProductImage objects from parsed rows.
-
-    Each product is created in its own transaction so a failure on one
-    row doesn't roll back previously created products. Returns a tuple
-    of (imported_count, failed_count, error_list).
-    """
-    from django.db import transaction
-
-    imported = 0
-    failed = 0
-    errors = []
-
-    for i, row in enumerate(rows, start=2):
-        mapped = _map_row(row)
-        title = mapped["title"]
-        if not title:
-            failed += 1
-            errors.append({"row": i, "error": "Missing required field: title"})
-            continue
-
-        with transaction.atomic():
-            product = Product.objects.create(
-                external_id=mapped["external_id"],
-                title=title,
-                description=mapped["description"],
-                brand=mapped["brand"],
-                product_type=mapped["product_type"],
-                raw_data=row,
-            )
-            for url in mapped["image_urls"]:
-                ProductImage.objects.create(product=product, url=url)
-            imported += 1
-
-    return imported, failed, errors
-
-
-def import_products(file_obj, filename):
-    """Validate, parse, and import products from a CSV or XLSX file (synchronous).
-
-    Legacy synchronous path used by tests and management commands.
-    The HTTP upload endpoint now calls validate_and_save_import() and
-    dispatches a background task instead.
-    """
-    _validate_file(file_obj, filename)
-    file_obj.seek(0)
-    ext = os.path.splitext(filename)[1].lower()
-    if ext == ".csv":
-        headers, rows = _read_csv(file_obj)
-    else:
-        headers, rows = _read_xlsx(file_obj)
-
-    header_errors = _validate_headers(headers)
-    if header_errors:
-        raise ParseError(header_errors)
-
-    import_obj = ProductImport.objects.create(
-        file=file_obj,
-        status=ProductImport.Status.PROCESSING,
-        total_rows=len(rows),
-    )
-
-    try:
-        imported, failed, row_errors = _create_products(rows, import_obj)
-        import_obj.status = ProductImport.Status.COMPLETED
-        import_obj.imported_rows = imported
-        import_obj.failed_rows = failed
-        import_obj.error_log = row_errors
-        import_obj.completed_at = tz.now()
-        import_obj.save(
-            update_fields=[
-                "status",
-                "imported_rows",
-                "failed_rows",
-                "error_log",
-                "completed_at",
-            ]
-        )
-    except Exception as exc:
-        logger.exception("Import failed for %s", filename)
-        import_obj.status = ProductImport.Status.FAILED
-        import_obj.error_log = [{"error": str(exc)}]
-        import_obj.save(update_fields=["status", "error_log"])
-        raise
-
     return import_obj
