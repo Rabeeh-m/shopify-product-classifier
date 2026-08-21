@@ -2,7 +2,6 @@ import json
 import os
 from unittest.mock import patch
 
-from django.conf import settings
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 
@@ -22,10 +21,6 @@ FIXTURE_PATH = os.path.join(
     "sample_taxonomy.json",
 )
 
-_NO_DEBUG_TOOLBAR_MIDDLEWARE = [
-    m for m in settings.MIDDLEWARE if "debug_toolbar" not in m
-]
-
 
 def _make_product(**kwargs):
     defaults = {
@@ -40,7 +35,7 @@ def _make_product(**kwargs):
 class ProcessProductBatchTest(TestCase):
     @classmethod
     def setUpTestData(cls):
-        call_command("load_taxonomy", source=FIXTURE_PATH)
+        call_command("load_taxonomy", source=FIXTURE_PATH, verbosity=0)
 
     @patch("classification.tasks._run_pipeline")
     def test_all_products_attempted(self, mock_pipeline):
@@ -61,9 +56,8 @@ class ProcessProductBatchTest(TestCase):
 
         p1.refresh_from_db()
         p2.refresh_from_db()
-        self.assertEqual(p1.status, "pending")
+        self.assertEqual(p1.status, Product.Status.FAILED)
         self.assertIn("boom", p1.error_message)
-        self.assertEqual(p1.retry_count, 1)
         self.assertEqual(p2.status, "processing")
 
     @patch("classification.tasks._run_pipeline")
@@ -111,37 +105,47 @@ class ProcessProductBatchTest(TestCase):
 class ProcessAllPendingTest(TestCase):
     @classmethod
     def setUpTestData(cls):
-        call_command("load_taxonomy", source=FIXTURE_PATH)
+        call_command("load_taxonomy", source=FIXTURE_PATH, verbosity=0)
 
-    @patch("classification.tasks.process_product_batch.delay")
-    def test_dispatches_pending_products(self, mock_delay):
-        _make_product(external_id="e1")
-        _make_product(external_id="e2")
+    @patch("classification.tasks._dispatch_classification_chunks")
+    def test_dispatches_pending_products(self, mock_dispatch):
+        p1 = _make_product(external_id="e1")
+        p2 = _make_product(external_id="e2")
 
         result = process_all_pending(chunk_size=10)
         self.assertEqual(result["processed"], 2)
-        mock_delay.assert_called_once()
 
-    @patch("classification.tasks.process_product_batch.delay")
-    @patch("classification.tasks.process_all_pending.delay")
-    def test_re_enqueues_if_more_pending(self, mock_self_delay, mock_batch_delay):
+        mock_dispatch.assert_called_once()
+        chunks = mock_dispatch.call_args[0][0]
+        self.assertEqual(len(chunks), 1)
+        self.assertCountEqual(chunks[0], [p1.id, p2.id])
+
+    @patch("classification.tasks._dispatch_classification_chunks")
+    def test_chunks_large_pending_set(self, mock_dispatch):
+        ids = []
         for i in range(5):
-            _make_product(external_id=f"e{i}")
+            ids.append(_make_product(external_id=f"e{i}").id)
 
-        process_all_pending(chunk_size=2)
-        mock_self_delay.assert_called()
+        result = process_all_pending(chunk_size=2)
+        self.assertEqual(result["processed"], 5)
 
-    @patch("classification.tasks.process_product_batch.delay")
-    def test_no_pending_returns_zero(self, mock_delay):
+        mock_dispatch.assert_called_once()
+        chunks = mock_dispatch.call_args[0][0]
+        self.assertEqual(len(chunks), 3)
+        flattened = [pid for chunk in chunks for pid in chunk]
+        self.assertCountEqual(flattened, ids)
+
+    @patch("classification.tasks._dispatch_classification_chunks")
+    def test_no_pending_returns_zero(self, mock_dispatch):
         result = process_all_pending()
         self.assertEqual(result["processed"], 0)
-        mock_delay.assert_not_called()
+        mock_dispatch.assert_not_called()
 
 
 class IntegrationTest(TestCase):
     @classmethod
     def setUpTestData(cls):
-        call_command("load_taxonomy", source=FIXTURE_PATH)
+        call_command("load_taxonomy", source=FIXTURE_PATH, verbosity=0)
 
     @patch("classification.services.classifier.call_ai")
     def test_full_pipeline_end_to_end(self, mock_call_ai):
@@ -170,7 +174,7 @@ class IntegrationTest(TestCase):
 class RunPipelineSafeTest(TestCase):
     @classmethod
     def setUpTestData(cls):
-        call_command("load_taxonomy", source=FIXTURE_PATH)
+        call_command("load_taxonomy", source=FIXTURE_PATH, verbosity=0)
 
     @patch("classification.tasks._run_pipeline")
     def test_returns_none_on_success(self, mock_pipeline):
@@ -195,9 +199,6 @@ class RunPipelineSafeTest(TestCase):
         self.assertEqual(len(error), 500)
 
 
-@override_settings(
-    MIDDLEWARE=_NO_DEBUG_TOOLBAR_MIDDLEWARE,
-)
 class ImportTriggerTest(TestCase):
     @override_settings(
         MEDIA_ROOT=os.path.join(os.path.dirname(__file__), "fixtures"),

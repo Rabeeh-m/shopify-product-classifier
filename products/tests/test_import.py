@@ -1,7 +1,6 @@
 import os
 import tempfile
 
-from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from rest_framework import status
@@ -13,10 +12,6 @@ from products.services.import_service import ParseError, import_products
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 
 TEST_MEDIA = tempfile.mkdtemp()
-
-_NO_DEBUG_TOOLBAR_MIDDLEWARE = [
-    m for m in settings.MIDDLEWARE if "debug_toolbar" not in m
-]
 
 
 def _read_fixture(filename):
@@ -117,11 +112,40 @@ class ImportServiceTest(TestCase):
         db_obj = ProductImport.objects.get(pk=import_obj.pk)
         self.assertIsNotNone(db_obj.completed_at)
 
+    def test_mapped_headers_create_products(self):
+        csv_data = (
+            b"Product Name,Product Description ,Collection Name,"
+            b"Product Category,Product Number\n"
+            b"Empress Sofa,A leather sofa,Empress,Living Room,EEI-1010-WHI\n"
+        )
+        upload = SimpleUploadedFile("mapped.csv", csv_data, content_type="text/csv")
+        import_obj = import_products(upload, "mapped.csv")
 
-@override_settings(
-    MEDIA_ROOT=TEST_MEDIA,
-    MIDDLEWARE=_NO_DEBUG_TOOLBAR_MIDDLEWARE,
-)
+        self.assertEqual(import_obj.status, ProductImport.Status.COMPLETED)
+        self.assertEqual(import_obj.imported_rows, 1)
+
+        product = Product.objects.get(title="Empress Sofa")
+        self.assertEqual(product.description, "A leather sofa")
+        self.assertEqual(product.brand, "Empress")
+        self.assertEqual(product.product_type, "Living Room")
+        self.assertEqual(product.external_id, "EEI-1010-WHI")
+
+    def test_mapped_headers_generates_hash_external_id(self):
+        csv_data = (
+            b"Product Name,Product Description \n"
+            b"Empress Chair,A basic chair\n"
+        )
+        upload = SimpleUploadedFile("nohash.csv", csv_data, content_type="text/csv")
+        import_obj = import_products(upload, "nohash.csv")
+
+        self.assertEqual(import_obj.status, ProductImport.Status.COMPLETED)
+        self.assertEqual(import_obj.imported_rows, 1)
+
+        product = Product.objects.get(title="Empress Chair")
+        self.assertTrue(product.external_id.startswith("gen-"))
+
+
+@override_settings(MEDIA_ROOT=TEST_MEDIA)
 class ProductImportAPITest(TestCase):
     def setUp(self):
         self.client = APIClient()

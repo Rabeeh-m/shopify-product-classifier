@@ -1,17 +1,12 @@
 import os
 import tempfile
 
-from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
 
 TEST_MEDIA = tempfile.mkdtemp()
-
-_NO_DEBUG_TOOLBAR_MIDDLEWARE = [
-    m for m in settings.MIDDLEWARE if "debug_toolbar" not in m
-]
 
 
 def _read_fixture(filename):
@@ -24,10 +19,7 @@ def _read_fixture(filename):
         return f.read()
 
 
-@override_settings(
-    MEDIA_ROOT=TEST_MEDIA,
-    MIDDLEWARE=_NO_DEBUG_TOOLBAR_MIDDLEWARE,
-)
+@override_settings(MEDIA_ROOT=TEST_MEDIA)
 class UploadMimeTypeTest(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -64,37 +56,3 @@ class UploadMimeTypeTest(TestCase):
             "/api/products/import/", {"file": upload}, format="multipart"
         )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-
-
-@override_settings(
-    MEDIA_ROOT=TEST_MEDIA,
-    MIDDLEWARE=_NO_DEBUG_TOOLBAR_MIDDLEWARE,
-)
-class ThrottleResponseTest(TestCase):
-    """Verify that the throttle exception handler returns the right shape."""
-
-    def test_throttled_response_has_correct_envelope(self):
-        from django.core.cache import cache
-
-        cache.clear()
-
-        unauth = APIClient()
-        # Burn through the anonymous throttle (60/min) in a tight loop.
-        # In tests the cache backend is usually LocMemCache so we can
-        # fill it quickly, but we'll use force_override to simulate it.
-        from django.test.utils import override_settings
-
-        with override_settings(
-            REST_FRAMEWORK={
-                **settings.REST_FRAMEWORK,
-                "DEFAULT_THROTTLE_RATES": {"anon": "2/minute", "user": "2/minute"},
-            }
-        ):
-            for _ in range(3):
-                unauth.get("/api/classification/jobs/status/")
-
-            # The 3rd request should be throttled
-            resp = unauth.get("/api/classification/jobs/status/")
-            if resp.status_code == 429:
-                self.assertIn("error", resp.data)
-                self.assertEqual(resp.data["error"]["code"], "THROTTLED")

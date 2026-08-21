@@ -1,59 +1,31 @@
 # Shopify Product Classifier
 
-**Version: v1.0.0** | **Status: Production Ready**
-
-A Django backend that classifies Shopify products into a taxonomy using a two-stage pipeline: a keyword-overlap narrowing step selects candidate categories, then an LLM (Anthropic Claude) picks the best match and extracts product attributes. Results are stored in the database and surfaced through a REST API for human review.
-
-## Table of Contents
-
-- [Architecture](#architecture)
-- [Local Setup](#local-setup)
-- [Running Tests](#running-tests)
-- [Loading Taxonomy Data](#loading-taxonomy-data)
-- [API Reference](#api-reference)
-- [Configuration](#configuration)
-- [Troubleshooting](#troubleshooting)
-- [Additional Documentation](#additional-documentation)
-
-## Architecture
-
-The system is a Django REST Framework backend with a Celery task queue for async classification. Products are uploaded via CSV/XLSX import, classified through a multi-step pipeline (candidate narrowing → LLM classification → confidence adjustment → persistence), and results are reviewed by humans through the API.
-
-The classification pipeline runs inside Celery workers using a thread pool for concurrent processing. A taxonomy cache (LocMem in dev, Redis in production) avoids repeated database hits during candidate scoring.
-
-For a detailed description of the high-level and low-level architecture, see [docs/architecture.md](docs/architecture.md).
+A Django backend that classifies Shopify products into a taxonomy using a two-stage pipeline: keyword-overlap narrowing selects candidate categories, then an LLM (Google Gemini) picks the best match and extracts product attributes. Results are reviewed by humans through a REST API.
 
 ## Local Setup
 
 ### Prerequisites
 
 - Python 3.11+
-- Redis (for Celery broker; install via package manager or use Docker)
+- Redis (for Celery broker)
 
-> **Note:** The dev configuration uses SQLite by default (no database server needed). Production uses MariaDB/MySQL. See [docs/decisions.md](docs/decisions.md) for rationale.
-
-### 1. Clone and create virtual environment
+### 1. Clone and set up
 
 ```bash
 git clone <repo-url> && cd shopify-product-classifier
 python3 -m venv .venv
 source .venv/bin/activate
-```
-
-### 2. Install dependencies
-
-```bash
 pip install -e ".[dev]"
 ```
 
-### 3. Configure environment
+### 2. Configure environment
 
 ```bash
 cp .env.example .env
-# Edit .env — the only required value for local dev is ANTHROPIC_API_KEY
+# Edit .env — only GEMINI_API_KEY is required for classification
 ```
 
-### 4. Start Redis
+### 3. Start Redis
 
 ```bash
 # Option A: Docker (recommended)
@@ -63,28 +35,21 @@ docker run -d --name redis -p 6379:6379 redis:7-alpine
 # sudo apt install redis-server && sudo systemctl start redis
 ```
 
-### 5. Run migrations and load taxonomy
+### 4. Initialize the database
 
 ```bash
 python manage.py migrate
 python manage.py load_taxonomy --source taxonomy/fixtures/sample_taxonomy.json
+python manage.py createsuperuser  # optional, for admin access
 ```
 
-### 6. Create a superuser (for admin access)
-
-```bash
-python manage.py createsuperuser
-```
-
-### 7. Start the backend server
+### 5. Start the backend
 
 ```bash
 python manage.py runserver
 ```
 
-Visit `http://127.0.0.1:8000/admin/` to access the Django admin.
-
-### 8. Start the Celery worker
+### 6. Start the Celery worker
 
 In a separate terminal:
 
@@ -93,9 +58,7 @@ source .venv/bin/activate
 celery -A config worker --loglevel=info
 ```
 
-The Celery worker is required for background classification. Without it, uploaded products will stay in "pending" status.
-
-### 9. (Optional) Start the frontend
+### 7. (Optional) Start the frontend
 
 ```bash
 cd frontend
@@ -103,44 +66,23 @@ npm install
 npm run dev
 ```
 
-The Vite dev server runs on `http://localhost:5173` by default.
-
-### 10. (Optional) Start Celery Beat (for stuck-product recovery)
-
-In another separate terminal:
-
-```bash
-source .venv/bin/activate
-celery -A config beat --loglevel=info
-```
-
-This runs the scheduled task that automatically requeues products stuck in "processing" for more than 30 minutes. See [docs/runbook.md](docs/runbook.md) for details.
+The Vite dev server runs on `http://localhost:5173`.
 
 ## Running Tests
 
 ```bash
-# Run the full test suite
 python manage.py test
-
-# Run with coverage (must be ≥90% on classification/, products/, core/)
-coverage run --source=classification,products,core,config -m django test
-coverage report
-
-# Run a specific module
-python manage.py test classification.tests.test_classifier
 ```
 
-### CI Checks
+## Docker Compose (alternative)
 
-Every push and pull request runs:
-- **Tests** with coverage (must be ≥90% on `classification/`, `products/`, `core/`)
-- **Linting** — `black`, `isort`, and `ruff` must pass
+```bash
+docker compose up
+```
 
-CI uses SQLite for the database, so no external services are required.
+This starts Redis, the Django server, and the Celery worker.
 
 ## Loading Taxonomy Data
-
-The `load_taxonomy` management command ingests Shopify's product taxonomy into the database.
 
 ```bash
 # Load from local JSON file
@@ -148,12 +90,9 @@ python manage.py load_taxonomy --source taxonomy/fixtures/sample_taxonomy.json
 
 # Dry run (preview without writing)
 python manage.py load_taxonomy --source taxonomy/fixtures/sample_taxonomy.json --dry-run
-
-# Load from a URL
-python manage.py load_taxonomy --source https://example.com/taxonomy.json
 ```
 
-The command is idempotent — running it multiple times will not create duplicates. It also invalidates the taxonomy cache after a successful load.
+The command is idempotent and invalidates the taxonomy cache after a successful load.
 
 ### Input JSON format
 
@@ -171,72 +110,74 @@ The command is idempotent — running it multiple times will not create duplicat
 
 ## API Reference
 
-All endpoints are documented in detail in [docs/api.md](docs/api.md). Here's a quick reference:
-
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/health/` | Health check (DB + Redis) |
+| `GET` | `/api/health/` | Health check |
 | `POST` | `/api/products/import/` | Upload CSV/XLSX, triggers classification |
 | `GET` | `/api/products/import/<id>/` | Check import status |
 | `GET` | `/api/taxonomy/categories/` | Search taxonomy categories |
-| `GET` | `/api/classification/jobs/status/` | Dashboard: product counts by status |
+| `GET` | `/api/classification/jobs/status/` | Product counts by status |
 | `GET` | `/api/classification/review/` | List classifications needing review |
 | `GET` | `/api/classification/review/<id>/` | Get single classification |
 | `POST` | `/api/classification/review/<id>/approve/` | Approve a classification |
 | `POST` | `/api/classification/review/<id>/correct/` | Correct a classification |
 
+### Import (POST /api/products/import/)
+
+```bash
+curl -X POST http://localhost:8000/api/products/import/ \
+  -F "file=@products.csv"
+```
+
+CSV columns: `title` (required), `description`, `brand`, `product_type`, `image_urls` (comma- or pipe-separated).
+
+### Review List (GET /api/classification/review/)
+
+```bash
+# With filters
+curl "http://localhost:8000/api/classification/review/?min_confidence=50&search=t-shirt"
+```
+
+### Approve (POST /api/classification/review/\<id\>/approve/)
+
+```bash
+curl -X POST http://localhost:8000/api/classification/review/1/approve/
+```
+
+### Correct (POST /api/classification/review/\<id\>/correct/)
+
+```bash
+curl -X POST http://localhost:8000/api/classification/review/1/correct/ \
+  -H "Content-Type: application/json" \
+  -d '{"category_id": 58, "attributes": [{"name": "Color", "value": "Red"}]}'
+```
+
 ## Configuration
 
-All environment variables are listed in [`.env.example`](.env.example). Key settings:
+Key environment variables (see `.env.example` for all):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | (required) | Anthropic API key for LLM classification |
-| `DJANGO_SECRET_KEY` | `insecure-dev-key-change-me` | Django secret key (required in production) |
-| `DJANGO_ENV` | `dev` | Set to `prod` for production settings |
-| `CLASSIFICATION_CANDIDATE_LIMIT` | `15` | Max candidate categories passed to the LLM |
-| `CLASSIFICATION_CONFIDENCE_THRESHOLD` | `70` | Above this → product "done"; below → "needs_review" |
-| `CLASSIFICATION_MAX_RETRIES` | `3` | Per-product retries before permanent failure |
-| `CLASSIFICATION_CONCURRENCY_LIMIT` | `5` | Thread pool workers per Celery batch task |
-| `TAXONOMY_CACHE_TTL` | `3600` | Taxonomy cache TTL in seconds |
-| `CELERY_BROKER_URL` | `redis://localhost:6379/0` | Redis URL for Celery broker |
-| `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` | Comma-separated allowed CORS origins |
+| `GEMINI_API_KEY` | (required) | API key for LLM classification |
+| `AI_MODEL_NAME` | `gemini-3.5-flash-lite` | Model used for classification |
+| `AI_RATE_LIMIT_RPM` | `15` | Client-side requests/minute cap (0 disables). Gemini free tier = 15 for flash-lite models |
+| `AI_RETRY_MAX_ATTEMPTS` | `3` | Retry attempts per AI call on 5xx/429/timeouts |
+| `AI_RETRY_BASE_DELAY` | `2.0` | Base seconds for exponential backoff between retries |
+| `DJANGO_SECRET_KEY` | `insecure-dev-key-change-me` | Django secret key |
+| `CLASSIFICATION_CANDIDATE_LIMIT` | `15` | Max candidate categories for LLM |
+| `CLASSIFICATION_CONFIDENCE_THRESHOLD` | `70` | Above → "done"; below → "needs_review" |
+| `CLASSIFICATION_CONCURRENCY_LIMIT` | `5` | Thread pool workers per batch |
+| `CELERY_BROKER_URL` | `redis://localhost:6379/0` | Redis URL for Celery |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` | Allowed CORS origins |
 
 ## Troubleshooting
 
-### "No module named MySQLdb" or database errors
+**Celery worker won't start:** Ensure Redis is running (`redis-cli ping` → `PONG`).
 
-The dev configuration uses SQLite (no install needed). If you see MySQL errors, your `DJANGO_ENV` may be set to `prod`. Either unset it or set `DJANGO_ENV=dev`.
+**Products stuck in "processing":** Run `python manage.py requeue_stuck_products` to reset them to pending.
 
-### Celery worker won't start
+**"GEMINI_API_KEY not set":** Add your key to `.env`.
 
-- Ensure Redis is running: `redis-cli ping` should return `PONG`.
-- Check `CELERY_BROKER_URL` in your `.env` matches your Redis instance.
+## Documentation
 
-### Products stuck in "processing"
-
-Products can get stuck if the Celery worker crashes. See [docs/runbook.md](docs/runbook.md) for automatic recovery and manual intervention steps.
-
-### AI classification fails with "ANTHROPIC_API_KEY not set"
-
-Add your Anthropic API key to `.env`:
-```
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-### CORS errors from the frontend
-
-Ensure `CORS_ALLOWED_ORIGINS` in `.env` includes your frontend URL (default: `http://localhost:5173`).
-
-### Upload rejected with "Unsupported file type"
-
-Only `.csv` and `.xlsx` files are accepted. Check the file extension and content type.
-
-## Additional Documentation
-
-- [docs/architecture.md](docs/architecture.md) — High-level and low-level system architecture
-- [docs/api.md](docs/api.md) — Full API reference with request/response shapes and curl examples
-- [docs/runbook.md](docs/runbook.md) — Operational runbook for batch recovery and stuck products
-- [docs/security.md](docs/security.md) — Security audit, rate limiting, and production hardening
-- [docs/performance.md](docs/performance.md) — Query optimization, caching, and concurrency tuning
-- [docs/decisions.md](docs/decisions.md) — Architecture Decision Records with rationale
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — High-level design, data model, pipeline details, and key decisions

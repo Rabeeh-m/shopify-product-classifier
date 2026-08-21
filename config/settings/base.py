@@ -1,4 +1,3 @@
-import logging
 import os
 from pathlib import Path
 
@@ -9,6 +8,8 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "insecure-dev-key-change-me")
+
+DEBUG = os.environ.get("DEBUG", "True").lower() in ("true", "1", "yes")
 
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
@@ -25,6 +26,7 @@ INSTALLED_APPS = [
     "taxonomy",
     "products",
     "classification",
+    "django_celery_results",
 ]
 
 MIDDLEWARE = [
@@ -60,14 +62,15 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.mysql",
-        "NAME": os.environ.get("DB_NAME", "shopify_product_classifier"),
-        "USER": os.environ.get("DB_USER", "root"),
-        "PASSWORD": os.environ.get("DB_PASSWORD", ""),
-        "HOST": os.environ.get("DB_HOST", "127.0.0.1"),
-        "PORT": os.environ.get("DB_PORT", "3306"),
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "db.sqlite3",
         "OPTIONS": {
-            "charset": "utf8mb4",
+            # Wait up to 60s for a writer instead of instantly raising
+            # 'database is locked' when several worker processes collide.
+            "timeout": 60,
+            # WAL lets readers proceed while a write transaction is open,
+            # which removes most cross-process contention during imports.
+            "init_command": "PRAGMA journal_mode=WAL;",
         },
     }
 }
@@ -101,21 +104,36 @@ CLASSIFICATION_CANDIDATE_LIMIT = int(
     os.environ.get("CLASSIFICATION_CANDIDATE_LIMIT", "15")
 )
 
-# AI classification settings
-AI_MODEL_NAME = os.environ.get("AI_MODEL_NAME", "claude-sonnet-4-20250514")
+AI_MODEL_NAME = os.environ.get("AI_MODEL_NAME", "gemini-3.5-flash-lite")
 AI_REQUEST_TIMEOUT = int(os.environ.get("AI_REQUEST_TIMEOUT", "30"))
+# Client-side requests-per-minute cap shared by all worker threads.
+# Set to 0 to disable pacing. Gemini free tier allows 15 RPM for
+# gemini-*-flash-lite models; raise this if you upgrade to a paid plan.
+AI_RATE_LIMIT_RPM = int(os.environ.get("AI_RATE_LIMIT_RPM", "15"))
+AI_RETRY_MAX_ATTEMPTS = int(os.environ.get("AI_RETRY_MAX_ATTEMPTS", "3"))
+AI_RETRY_BASE_DELAY = float(os.environ.get("AI_RETRY_BASE_DELAY", "2.0"))
 CLASSIFICATION_CONFIDENCE_THRESHOLD = int(
     os.environ.get("CLASSIFICATION_CONFIDENCE_THRESHOLD", "70")
 )
-CLASSIFICATION_MAX_RETRIES = int(os.environ.get("CLASSIFICATION_MAX_RETRIES", "3"))
 CLASSIFICATION_CONCURRENCY_LIMIT = int(
     os.environ.get("CLASSIFICATION_CONCURRENCY_LIMIT", "5")
 )
 
-# Taxonomy cache TTL (seconds) — taxonomy changes rarely, cache aggressively.
+# Rule-based classification (runs before AI to save API quota).
+RULE_CLASSIFICATION_ENABLED = (
+    os.environ.get("RULE_CLASSIFICATION_ENABLED", "true").lower() == "true"
+)
+RULE_AUTO_CLASSIFY_MIN_SCORE = float(
+    os.environ.get("RULE_AUTO_CLASSIFY_MIN_SCORE", "6.0")
+)
+RULE_MIN_SCORE_GAP = float(os.environ.get("RULE_MIN_SCORE_GAP", "2.0"))
+RULE_VENDOR_CONFIDENCE = float(os.environ.get("RULE_VENDOR_CONFIDENCE", "90"))
+RULE_KEYWORD_CONFIDENCE_BASE = float(
+    os.environ.get("RULE_KEYWORD_CONFIDENCE_BASE", "70")
+)
+
 TAXONOMY_CACHE_TTL = int(os.environ.get("TAXONOMY_CACHE_TTL", "3600"))
 
-# Celery settings
 CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", "django-db")
 CELERY_ACCEPT_CONTENT = ["json"]
@@ -123,9 +141,6 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 
-INSTALLED_APPS += ["django_celery_results"]  # noqa: F405
-
-# Cache — Redis-backed in production, LocMemCache in dev/test.
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
@@ -140,90 +155,43 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.AllowAny",
     ],
-    "DEFAULT_THROTTLE_CLASSES": [
-        "rest_framework.throttling.AnonRateThrottle",
-        "rest_framework.throttling.UserRateThrottle",
-    ],
-    "DEFAULT_THROTTLE_RATES": {
-        "anon": "60/minute",
-        "user": "120/minute",
-    },
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 25,
     "EXCEPTION_HANDLER": "config.exception_handlers.custom_exception_handler",
 }
 
-# CORS — only allow known frontend origins, never wildcard
 CORS_ALLOWED_ORIGINS = os.environ.get(
     "CORS_ALLOWED_ORIGINS", "http://localhost:5173"
 ).split(",")
 CORS_ALLOW_CREDENTIALS = True
 
-# Logging — structured JSON in prod, human-readable in dev
-_LOG_FORMAT = os.environ.get("DJANGO_ENV", "dev")
-_LOG_HANDLERS = ["json_console"] if _LOG_FORMAT == "prod" else ["console"]
-_LOG_FORMATTER = "json" if _LOG_FORMAT == "prod" else "verbose"
-
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-    "formatters": {
-        "verbose": {
-            "format": "[{asctime}] {levelname} {name} {message}",
-            "style": "{",
-        },
-        "json": {
-            "format": "{message}",
-            "style": "{",
-            "class": "pythonjsonlogger.jsonlogger.JsonFormatter",
-        },
-    },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
-            "formatter": "verbose",
-        },
-        "json_console": {
-            "class": "logging.StreamHandler",
-            "formatter": "json",
         },
     },
     "root": {
-        "handlers": _LOG_HANDLERS,
+        "handlers": ["console"],
         "level": "INFO",
     },
     "loggers": {
         "django": {
-            "handlers": _LOG_HANDLERS,
+            "handlers": ["console"],
             "level": "INFO",
             "propagate": False,
         },
         "classification": {
-            "handlers": _LOG_HANDLERS,
+            "handlers": ["console"],
             "level": "DEBUG",
             "propagate": False,
         },
         "products": {
-            "handlers": _LOG_HANDLERS,
+            "handlers": ["console"],
             "level": "INFO",
             "propagate": False,
         },
     },
 }
-
-SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
-if SENTRY_DSN:
-    try:
-        import sentry_sdk
-        from sentry_sdk.integrations.django import DjangoIntegration
-
-        sentry_sdk.init(
-            dsn=SENTRY_DSN,
-            integrations=[DjangoIntegration()],
-            traces_sample_rate=0.1,
-            send_default_pii=False,
-        )
-    except ImportError:
-        logging.getLogger(__name__).warning(
-            "sentry-sdk is not installed; Sentry integration disabled."
-        )

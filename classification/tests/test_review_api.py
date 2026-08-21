@@ -1,9 +1,8 @@
 import os
 
-from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.management import call_command
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -19,13 +18,9 @@ FIXTURE_PATH = os.path.join(
     "sample_taxonomy.json",
 )
 
-_NO_DEBUG_TOOLBAR_MIDDLEWARE = [
-    m for m in settings.MIDDLEWARE if "debug_toolbar" not in m
-]
-
 
 def _load_taxonomy():
-    call_command("load_taxonomy", source=FIXTURE_PATH)
+    call_command("load_taxonomy", source=FIXTURE_PATH, verbosity=0)
 
 
 def _create_user(username="reviewer"):
@@ -53,7 +48,6 @@ def _create_classification(product, **kwargs):
     return Classification.objects.create(product=product, **defaults)
 
 
-@override_settings(MIDDLEWARE=_NO_DEBUG_TOOLBAR_MIDDLEWARE)
 class ReviewListTest(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -156,7 +150,6 @@ class ReviewListTest(TestCase):
         self.assertEqual(alt["category"]["id"], cat2.id)
 
 
-@override_settings(MIDDLEWARE=_NO_DEBUG_TOOLBAR_MIDDLEWARE)
 class ReviewDetailTest(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -181,7 +174,6 @@ class ReviewDetailTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
-@override_settings(MIDDLEWARE=_NO_DEBUG_TOOLBAR_MIDDLEWARE)
 class ReviewApproveTest(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -232,7 +224,6 @@ class ReviewApproveTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
-@override_settings(MIDDLEWARE=_NO_DEBUG_TOOLBAR_MIDDLEWARE)
 class ReviewCorrectTest(TestCase):
     @classmethod
     def setUpTestData(cls):

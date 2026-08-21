@@ -4,7 +4,11 @@ from django.core.management import call_command
 from django.test import TestCase, override_settings
 
 from classification.models import Classification, ClassificationAttribute
-from classification.services.persistence import _resolve_attribute, save_classification
+from classification.services.persistence import (
+    _load_attribute_maps,
+    _resolve_attribute,
+    save_classification,
+)
 from products.models import Product
 from taxonomy.models import Attribute, Category
 
@@ -33,9 +37,13 @@ def _ai_response(category_id=15, attributes=None):
 
 
 class ResolveAttributeTest(TestCase):
+    def _resolve(self, ai_attr):
+        attr_map, value_map = _load_attribute_maps()
+        return _resolve_attribute(ai_attr, attr_map, value_map)
+
     def test_existing_attribute_resolves(self):
         call_command("load_taxonomy", source=FIXTURE_PATH)
-        attr_obj, value_obj, free_text = _resolve_attribute(
+        attr_obj, value_obj, free_text = self._resolve(
             {"name": "Color", "value": "Brown"}
         )
         self.assertEqual(attr_obj.name, "Color")
@@ -45,7 +53,7 @@ class ResolveAttributeTest(TestCase):
 
     def test_existing_attribute_case_insensitive(self):
         call_command("load_taxonomy", source=FIXTURE_PATH)
-        attr_obj, value_obj, free_text = _resolve_attribute(
+        attr_obj, value_obj, free_text = self._resolve(
             {"name": "color", "value": "brown"}
         )
         self.assertEqual(attr_obj.name, "Color")
@@ -54,7 +62,7 @@ class ResolveAttributeTest(TestCase):
 
     def test_no_match_creates_free_text(self):
         call_command("load_taxonomy", source=FIXTURE_PATH)
-        attr_obj, value_obj, free_text = _resolve_attribute(
+        attr_obj, value_obj, free_text = self._resolve(
             {"name": "Color", "value": "Teal"}
         )
         self.assertEqual(attr_obj.name, "Color")
@@ -62,7 +70,7 @@ class ResolveAttributeTest(TestCase):
         self.assertEqual(free_text, "Teal")
 
     def test_unknown_attribute_creates_new(self):
-        attr_obj, value_obj, free_text = _resolve_attribute(
+        attr_obj, value_obj, free_text = self._resolve(
             {"name": "Weight", "value": "5kg"}
         )
         self.assertEqual(attr_obj.name, "Weight")
@@ -71,14 +79,14 @@ class ResolveAttributeTest(TestCase):
         self.assertTrue(Attribute.objects.filter(name="Weight").exists())
 
     def test_empty_name_returns_none(self):
-        attr_obj, value_obj, free_text = _resolve_attribute(
+        attr_obj, value_obj, free_text = self._resolve(
             {"name": "", "value": "test"}
         )
         self.assertIsNone(attr_obj)
 
     def test_empty_value_stored_as_free_text(self):
         call_command("load_taxonomy", source=FIXTURE_PATH)
-        attr_obj, value_obj, free_text = _resolve_attribute(
+        attr_obj, value_obj, free_text = self._resolve(
             {"name": "Color", "value": ""}
         )
         self.assertEqual(attr_obj.name, "Color")
@@ -107,7 +115,7 @@ class SaveClassificationTest(TestCase):
         self.assertIsNotNone(result.id)
         self.assertEqual(result.category.id, 15)
         self.assertAlmostEqual(result.confidence, 85.0)
-        self.assertEqual(result.status, Classification.Status.NEEDS_REVIEW)
+        self.assertEqual(result.status, Classification.Status.APPROVED)
 
     def test_classification_alternatives_saved(self):
         product = self._make_product()
@@ -138,25 +146,29 @@ class SaveClassificationTest(TestCase):
         self.assertEqual(attr.free_text_value, "Teal")
 
     @override_settings(CLASSIFICATION_CONFIDENCE_THRESHOLD=70)
-    def test_above_threshold_sets_done(self):
+    def test_above_threshold_auto_approves(self):
         product = self._make_product()
-        save_classification(product, _ai_response(), 85.0)
+        result = save_classification(product, _ai_response(), 85.0)
         product.refresh_from_db()
         self.assertEqual(product.status, "done")
+        self.assertEqual(result.status, Classification.Status.APPROVED)
+        self.assertIsNone(result.reviewed_at)
 
     @override_settings(CLASSIFICATION_CONFIDENCE_THRESHOLD=70)
     def test_below_threshold_sets_needs_review(self):
         product = self._make_product()
-        save_classification(product, _ai_response(), 50.0)
+        result = save_classification(product, _ai_response(), 50.0)
         product.refresh_from_db()
         self.assertEqual(product.status, "needs_review")
+        self.assertEqual(result.status, Classification.Status.NEEDS_REVIEW)
 
     @override_settings(CLASSIFICATION_CONFIDENCE_THRESHOLD=70)
-    def test_exactly_at_threshold_sets_done(self):
+    def test_exactly_at_threshold_auto_approves(self):
         product = self._make_product()
-        save_classification(product, _ai_response(), 70.0)
+        result = save_classification(product, _ai_response(), 70.0)
         product.refresh_from_db()
         self.assertEqual(product.status, "done")
+        self.assertEqual(result.status, Classification.Status.APPROVED)
 
     def test_idempotent_on_rerun(self):
         product = self._make_product()

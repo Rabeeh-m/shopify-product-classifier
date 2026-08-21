@@ -3,7 +3,6 @@ import os
 import tempfile
 from unittest.mock import patch
 
-from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import TestCase, override_settings
@@ -21,10 +20,6 @@ FIXTURE_PATH = os.path.join(
 )
 
 TEST_MEDIA = tempfile.mkdtemp()
-
-_NO_DEBUG_TOOLBAR_MIDDLEWARE = [
-    m for m in settings.MIDDLEWARE if "debug_toolbar" not in m
-]
 
 _SAMPLE_CSV = (
     b"title,description,brand,product_type\n"
@@ -52,17 +47,9 @@ def _mock_ai_response_for_category(cat_id):
     )
 
 
-@override_settings(
-    MEDIA_ROOT=TEST_MEDIA,
-    MIDDLEWARE=_NO_DEBUG_TOOLBAR_MIDDLEWARE,
-)
+@override_settings(MEDIA_ROOT=TEST_MEDIA)
 class EndToEndFlowTest(TestCase):
-    """Integration test: import -> classify -> review -> approve.
-
-    Runs the classification pipeline synchronously with a mocked AI
-    client, then exercises the review API to approve a result, and
-    asserts full database consistency.
-    """
+    """Integration test: import -> classify -> review -> approve."""
 
     @classmethod
     def setUpTestData(cls):
@@ -72,7 +59,6 @@ class EndToEndFlowTest(TestCase):
         self.client = APIClient()
 
     def test_full_import_classify_review_approve_flow(self):
-        # --- Step 1: Import products ---
         upload = SimpleUploadedFile(
             "products.csv", _SAMPLE_CSV, content_type="text/csv"
         )
@@ -89,14 +75,12 @@ class EndToEndFlowTest(TestCase):
         for p in products:
             self.assertEqual(p.status, "pending")
 
-        # --- Step 2: Classify synchronously with mocked AI ---
         from classification.services.candidate_finder import find_candidates
         from classification.services.classifier import classify_product
         from classification.services.confidence import calculate_confidence
         from classification.services.persistence import save_classification
 
         def _mock_call_ai(prompt, **kwargs):
-            """Return a mock AI response using the first candidate from prompt."""
             import re
 
             match = re.search(r"id: (\d+)", prompt)
@@ -113,7 +97,6 @@ class EndToEndFlowTest(TestCase):
                 final_confidence = calculate_confidence(product, ai_response)
                 save_classification(product, ai_response, final_confidence)
 
-        # Verify classifications created
         classifications = list(
             Classification.objects.select_related("product", "category").all()
         )
@@ -123,43 +106,36 @@ class EndToEndFlowTest(TestCase):
             self.assertIsNotNone(cls_obj.category)
             self.assertGreater(cls_obj.confidence, 0)
 
-        # Verify product statuses
         for p in products:
             p.refresh_from_db()
             self.assertIn(p.status, ["done", "needs_review"])
 
-        # --- Step 3: Hit the review list API ---
         list_resp = self.client.get("/api/classification/review/")
         self.assertEqual(list_resp.status_code, 200)
         self.assertEqual(list_resp.data["count"], 3)
 
         first_id = list_resp.data["results"][0]["id"]
 
-        # --- Step 4: Get detail for one classification ---
         detail_resp = self.client.get(f"/api/classification/review/{first_id}/")
         self.assertEqual(detail_resp.status_code, 200)
         self.assertIn("product", detail_resp.data)
         self.assertIn("category", detail_resp.data)
 
-        # --- Step 5: Approve it ---
         approve_resp = self.client.post(
             f"/api/classification/review/{first_id}/approve/"
         )
         self.assertEqual(approve_resp.status_code, 200)
         self.assertEqual(approve_resp.data["status"], "approved")
 
-        # Verify DB consistency
         cls_obj = Classification.objects.get(pk=first_id)
         self.assertEqual(cls_obj.status, Classification.Status.APPROVED)
         self.assertIsNotNone(cls_obj.reviewed_at)
         self.assertEqual(cls_obj.product.status, "done")
 
-        # Verify the review list now has 2 remaining
         list_resp2 = self.client.get("/api/classification/review/")
         self.assertEqual(list_resp2.data["count"], 2)
 
     def test_correct_flow_updates_category_and_attributes(self):
-        # Import one product
         upload = SimpleUploadedFile("single.csv", _SINGLE_CSV, content_type="text/csv")
         import_resp = self.client.post(
             "/api/products/import/",
@@ -170,7 +146,6 @@ class EndToEndFlowTest(TestCase):
 
         product = Product.objects.first()
 
-        # Classify with mock
         from classification.services.candidate_finder import find_candidates
         from classification.services.classifier import classify_product
         from classification.services.confidence import calculate_confidence
@@ -192,11 +167,8 @@ class EndToEndFlowTest(TestCase):
             final_confidence = calculate_confidence(product, ai_response)
             cls_obj = save_classification(product, ai_response, final_confidence)
 
-        # Get a different category for correction
-
         other_cat = Category.objects.exclude(id=cls_obj.category_id).first()
 
-        # Correct with new category and attributes
         list_resp = self.client.get("/api/classification/review/")
         cls_id = list_resp.data["results"][0]["id"]
 
@@ -217,3 +189,39 @@ class EndToEndFlowTest(TestCase):
         attr = cls_obj.attributes.first()
         self.assertEqual(attr.free_text_value, "CustomTeal")
         self.assertEqual(cls_obj.product.status, "done")
+
+    def test_broken_image_doesnt_stop_batch(self):
+        """A product with a broken/missing image doesn't block others."""
+        csv_data = b"title,description,brand,product_type\n"
+        csv_data += b"Good Product A,Desc A,Brand A,Type A\n"
+        csv_data += b"Good Product B,Desc B,Brand B,Type B\n"
+        upload = SimpleUploadedFile("batch.csv", csv_data, content_type="text/csv")
+        import_resp = self.client.post(
+            "/api/products/import/",
+            {"file": upload},
+            format="multipart",
+        )
+        self.assertEqual(import_resp.status_code, 201)
+
+        from classification.tasks import process_product_batch
+
+        product_ids = list(Product.objects.values_list("id", flat=True))
+
+        with patch("classification.tasks._run_pipeline") as mock_pipeline:
+            def side_effect(product):
+                if product.title == "Good Product A":
+                    raise RuntimeError("Image download failed")
+                return None
+            mock_pipeline.side_effect = side_effect
+
+            result = process_product_batch(product_ids)
+
+        self.assertEqual(result["processed"], 2)
+        self.assertEqual(result["failed"], 1)
+
+        product_a = Product.objects.get(title="Good Product A")
+        self.assertEqual(product_a.status, Product.Status.FAILED)
+
+        product_b = Product.objects.get(title="Good Product B")
+        self.assertNotEqual(product_b.status, Product.Status.FAILED)
+        self.assertIsNone(product_b.processing_started_at)

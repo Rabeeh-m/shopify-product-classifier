@@ -38,7 +38,6 @@ Thumbs.db
 # Coverage
 htmlcov/
 .coverage
-.coverage.*
 coverage.xml
 
 # Ruff
@@ -48,5 +47,5 @@ coverage.xml
 frontend/node_modules/
 frontend/dist/
 
-# Test artifacts
+# Test fixtures (generated)
 classification/tests/fixtures/imports/

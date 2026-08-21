@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
     help = (
-        "Requeue products stuck in 'processing' status. "
-        "Respects retry_count against CLASSIFICATION_MAX_RETRIES."
+        "Requeue products stuck in 'processing' status (or marked 'failed') "
+        "back to pending."
     )
 
     def add_arguments(self, parser):
@@ -22,69 +22,45 @@ class Command(BaseCommand):
             default=30,
             help="Minutes after which a product is considered stuck (default: 30).",
         )
+        parser.add_argument(
+            "--include-failed",
+            action="store_true",
+            help=(
+                "Also requeue products in 'failed' status "
+                "(e.g. after a rate-limit outage)."
+            ),
+        )
 
     def handle(self, *args, **options):
         minutes = options["older_than_minutes"]
+        include_failed = options["include_failed"]
         cutoff = tz.now() - timedelta(minutes=minutes)
-        max_retries = self._get_max_retries()
 
-        stuck = Product.objects.filter(
-            status=Product.Status.PROCESSING,
-            processing_started_at__lt=cutoff,
-        )
+        if include_failed:
+            queryset = Product.objects.filter(
+                status__in=[Product.Status.PROCESSING, Product.Status.FAILED]
+            ).exclude(
+                status=Product.Status.PROCESSING,
+                processing_started_at__gt=cutoff,
+            )
+        else:
+            queryset = Product.objects.filter(
+                status=Product.Status.PROCESSING,
+                processing_started_at__lt=cutoff,
+            )
 
         requeued = 0
-        permanently_failed = 0
 
-        for product in stuck.select_for_update(skip_locked=True):
-            if product.retry_count >= max_retries:
-                product.status = Product.Status.FAILED
-                product.processing_started_at = None
-                product.error_message = (
-                    f"Permanently failed: exceeded max retries ({max_retries})"
-                )
-                product.save(
-                    update_fields=[
-                        "status",
-                        "processing_started_at",
-                        "error_message",
-                    ]
-                )
-                permanently_failed += 1
-                logger.warning(
-                    "Product %d (%s) permanently failed: retry_count=%d >= %d",
-                    product.id,
-                    product.title,
-                    product.retry_count,
-                    max_retries,
-                )
-            else:
-                product.status = Product.Status.PENDING
-                product.processing_started_at = None
-                product.retry_count += 1
-                product.save(
-                    update_fields=[
-                        "status",
-                        "processing_started_at",
-                        "retry_count",
-                    ]
-                )
-                requeued += 1
-                logger.info(
-                    "Product %d (%s) requeued (retry %d/%d)",
-                    product.id,
-                    product.title,
-                    product.retry_count,
-                    max_retries,
-                )
+        for product in queryset.select_for_update(skip_locked=True).iterator():
+            product.status = Product.Status.PENDING
+            product.processing_started_at = None
+            product.error_message = ""
+            product.save(
+                update_fields=["status", "processing_started_at", "error_message"]
+            )
+            requeued += 1
+            logger.info("Product %d (%s) requeued", product.id, product.title)
 
         self.stdout.write(
-            self.style.SUCCESS(
-                f"Requeued: {requeued}, permanently failed: {permanently_failed}"
-            )
+            self.style.SUCCESS(f"Requeued: {requeued}")
         )
-
-    def _get_max_retries(self):
-        from django.conf import settings
-
-        return getattr(settings, "CLASSIFICATION_MAX_RETRIES", 3)

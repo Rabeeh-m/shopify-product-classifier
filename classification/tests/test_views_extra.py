@@ -1,16 +1,10 @@
-from django.conf import settings
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from products.models import Product
 
-_NO_DEBUG_TOOLBAR_MIDDLEWARE = [
-    m for m in settings.MIDDLEWARE if "debug_toolbar" not in m
-]
 
-
-@override_settings(MIDDLEWARE=_NO_DEBUG_TOOLBAR_MIDDLEWARE)
 class ClassificationJobStatusViewTest(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -45,7 +39,6 @@ class ClassificationJobStatusViewTest(TestCase):
         self.assertEqual(response.data["failed"], 1)
 
 
-@override_settings(MIDDLEWARE=_NO_DEBUG_TOOLBAR_MIDDLEWARE)
 class ReviewListViewUnpagedTest(TestCase):
     def setUp(self):
         self.client = APIClient()

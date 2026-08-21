@@ -9,6 +9,13 @@ class Product(models.Model):
         NEEDS_REVIEW = "needs_review", "Needs Review"
         FAILED = "failed", "Failed"
 
+    product_import = models.ForeignKey(
+        "ProductImport",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="products",
+    )
     external_id = models.CharField(max_length=255, db_index=True)
     title = models.CharField(max_length=512)
     description = models.TextField(blank=True, default="")
@@ -23,7 +30,6 @@ class Product(models.Model):
     )
     error_message = models.TextField(blank=True, default="")
     processing_started_at = models.DateTimeField(null=True, blank=True)
-    retry_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

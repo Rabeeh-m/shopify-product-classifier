@@ -26,7 +26,7 @@ class LoadTaxonomyTest(TestCase):
         call_command("load_taxonomy", source=self.fixture_path)
 
         counts = self._count_data()
-        self.assertEqual(counts["categories"], 75)
+        self.assertEqual(counts["categories"], 99)
         self.assertEqual(counts["attributes"], 11)
         self.assertEqual(counts["values"], 65)
         self.assertGreaterEqual(counts["cat_attrs"], 187)

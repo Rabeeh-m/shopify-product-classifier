@@ -18,7 +18,6 @@ from taxonomy.models import Category
 @override_settings(
     CLASSIFICATION_CONCURRENCY_LIMIT=3,
     CLASSIFICATION_CANDIDATE_LIMIT=3,
-    CLASSIFICATION_MAX_RETRIES=3,
 )
 class ConcurrencyBenchmarkTest(TestCase):
     @classmethod
@@ -60,16 +59,6 @@ class ConcurrencyBenchmarkTest(TestCase):
         result = process_product_batch(self.product_ids)
         self.assertEqual(result["processed"], 5)
         self.assertEqual(result["failed"], 1)
-
-    @patch("classification.tasks._run_pipeline")
-    def test_max_retries_permanent_failure(self, mock_pipeline):
-        from products.models import Product as P
-
-        P.objects.filter(id=self.product_ids[0]).update(retry_count=3)
-        mock_pipeline.return_value = None
-        result = process_product_batch(self.product_ids)
-        self.assertEqual(result["processed"], 5)
-        self.assertEqual(result["failed"], 0)
 
     def test_concurrency_limit_setting_exists(self):
         self.assertTrue(hasattr(settings, "CLASSIFICATION_CONCURRENCY_LIMIT"))

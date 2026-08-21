@@ -1,14 +1,9 @@
-"""Query count regression tests + taxonomy cache invalidation tests.
-
-These tests use assertNumQueries to guard against N+1 regressions
-and verify that the taxonomy cache invalidation actually works.
-"""
+"""Query count regression tests + taxonomy cache invalidation tests."""
 
 import os
 
-from django.conf import settings
 from django.core.management import call_command
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from rest_framework.test import APIClient
 
 from classification.models import Classification
@@ -24,12 +19,7 @@ FIXTURE_PATH = os.path.join(
     "sample_taxonomy.json",
 )
 
-_NO_DEBUG_TOOLBAR_MIDDLEWARE = [
-    m for m in settings.MIDDLEWARE if "debug_toolbar" not in m
-]
 
-
-@override_settings(MIDDLEWARE=_NO_DEBUG_TOOLBAR_MIDDLEWARE)
 class ReviewListQueryCountTest(TestCase):
     """Assert the review list endpoint uses a fixed number of queries."""
 
@@ -56,22 +46,13 @@ class ReviewListQueryCountTest(TestCase):
         self.client = APIClient()
 
     def test_review_list_query_count(self):
-        """Review list should use <= 5 queries regardless of result count.
-
-        Breakdown (target):
-          1. COUNT for pagination
-          2. Main classification SELECT with select_related
-          3. Prefetch classificationattribute
-          4. Prefetch product images
-          5. Bulk-load all alternative categories for the page
-        """
+        """Review list should use <= 5 queries regardless of result count."""
         with self.assertNumQueries(5):
             response = self.client.get("/api/classification/review/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["count"], 25)
 
 
-@override_settings(MIDDLEWARE=_NO_DEBUG_TOOLBAR_MIDDLEWARE)
 class CandidateFinderQueryCountTest(TestCase):
     """Assert candidate_finder uses zero DB queries when taxonomy is cached."""
 
@@ -84,19 +65,15 @@ class CandidateFinderQueryCountTest(TestCase):
 
         from taxonomy.services.cache import CACHE_KEY
 
-        # Warm the cache
         cache.delete(CACHE_KEY)
         product = Product.objects.create(
             external_id="cf-test", title="Leather Sofa Furniture"
         )
-        # First call populates cache
         find_candidates(product)
-        # Second call should use cache — zero DB queries
         with self.assertNumQueries(0):
             find_candidates(product)
 
 
-@override_settings(MIDDLEWARE=_NO_DEBUG_TOOLBAR_MIDDLEWARE)
 class TaxonomyCacheInvalidationTest(TestCase):
     """Verify cache invalidation works after load_taxonomy."""
 
@@ -118,11 +95,9 @@ class TaxonomyCacheInvalidationTest(TestCase):
         self.assertTrue(cache.get(CACHE_KEY) is not None)
         self.assertGreater(len(cats), 0)
 
-        # Invalidate
         invalidate_taxonomy_cache()
         self.assertIsNone(cache.get(CACHE_KEY))
 
-        # Next call repopulates
         cats2 = get_all_categories()
         self.assertEqual(len(cats2), len(cats))
 
@@ -132,9 +107,8 @@ class TaxonomyCacheInvalidationTest(TestCase):
         from taxonomy.services.cache import CACHE_KEY, get_all_categories
 
         cache.delete(CACHE_KEY)
-        get_all_categories()  # populate
+        get_all_categories()
         self.assertIsNotNone(cache.get(CACHE_KEY))
 
-        # Re-run load_taxonomy (non-dry-run) — should invalidate
         call_command("load_taxonomy", source=FIXTURE_PATH, verbosity=0)
         self.assertIsNone(cache.get(CACHE_KEY))

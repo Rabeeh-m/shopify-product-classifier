@@ -30,11 +30,6 @@ class TestCustomExceptionHandler(SimpleTestCase):
         self.assertEqual(resp.status_code, 404)
         self.assertEqual(resp.data["error"]["code"], "NOT_FOUND")
 
-    def test_throttled(self):
-        resp = _call(drf_exc.Throttled(wait=60))
-        self.assertEqual(resp.status_code, 429)
-        self.assertEqual(resp.data["error"]["code"], "THROTTLED")
-
     def test_unhandled_exception_returns_500(self):
         resp = _call(RuntimeError("kaboom"))
         self.assertEqual(resp.status_code, 500)

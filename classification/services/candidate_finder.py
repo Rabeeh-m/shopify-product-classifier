@@ -107,7 +107,19 @@ def _build_product_tokens(product):
         product.title or "",
         product.description or "",
         product.product_type or "",
+        getattr(product, "brand", "") or "",
     ]
+    raw = getattr(product, "raw_data", None) or {}
+    for key in (
+        "product_sub_category",
+        "product_category",
+        "materials",
+        "bullets",
+        "set_includes",
+    ):
+        val = raw.get(key)
+        if val:
+            parts.append(str(val))
     return _tokenize(" ".join(parts))
 
 

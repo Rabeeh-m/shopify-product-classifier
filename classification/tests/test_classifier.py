@@ -1,9 +1,9 @@
 import json
 import os
 import types
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from classification.exceptions import (
     AIClientError,
@@ -70,16 +70,16 @@ def _good_response():
 
 
 def _make_api_status_error(status_code, message="error"):
-    """Create an APIStatusError with the required response.headers."""
-    import anthropic
+    """Create a genai APIError with the given HTTP status code."""
 
-    resp = MagicMock()
-    resp.headers = {"request-id": "test-id"}
-    resp.status_code = status_code
-    return anthropic.APIStatusError(
-        message=message,
-        response=resp,
-        body=None,
+    from google.genai import errors as genai_errors
+
+    err_cls = (
+        genai_errors.ServerError if status_code >= 500 else genai_errors.ClientError
+    )
+    return err_cls(
+        status_code,
+        {"message": message, "error": {"code": status_code, "message": message}},
     )
 
 
@@ -309,48 +309,56 @@ class RetryLogicTest(TestCase):
         # call_ai wraps the retry logic internally
         self.assertEqual(mock_call_ai.call_count, 1)
 
-    @patch("classification.services.ai_client._get_anthropic_client")
-    def test_client_timeout_retries(self, mock_get_client):
-        import anthropic
+    @override_settings(AI_RATE_LIMIT_RPM=0)
+    @patch("classification.services.ai_client.time.sleep")
+    @patch("classification.services.ai_client._get_gemini_client")
+    def test_client_timeout_retries(self, mock_get_client, mock_sleep):
+        import httpx
 
         mock_client = mock_get_client.return_value
-        mock_client.messages.create.side_effect = anthropic.APITimeoutError(
-            request=types.SimpleNamespace()
+        mock_client.models.generate_content.side_effect = httpx.ReadTimeout(
+            "timed out"
         )
         from classification.services.ai_client import call_ai
 
         with self.assertRaises(AITimeoutError):
             call_ai("test prompt")
-        self.assertEqual(mock_client.messages.create.call_count, 3)
+        self.assertEqual(mock_client.models.generate_content.call_count, 3)
 
-    @patch("classification.services.ai_client._get_anthropic_client")
-    def test_server_error_retries(self, mock_get_client):
+    @override_settings(AI_RATE_LIMIT_RPM=0)
+    @patch("classification.services.ai_client.time.sleep")
+    @patch("classification.services.ai_client._get_gemini_client")
+    def test_server_error_retries(self, mock_get_client, mock_sleep):
         mock_client = mock_get_client.return_value
-        mock_client.messages.create.side_effect = _make_api_status_error(
+        mock_client.models.generate_content.side_effect = _make_api_status_error(
             500, "Internal error"
         )
         from classification.services.ai_client import call_ai
 
         with self.assertRaises(AIClientError):
             call_ai("test prompt")
-        self.assertEqual(mock_client.messages.create.call_count, 3)
+        self.assertEqual(mock_client.models.generate_content.call_count, 3)
 
-    @patch("classification.services.ai_client._get_anthropic_client")
-    def test_rate_limit_retries(self, mock_get_client):
+    @override_settings(AI_RATE_LIMIT_RPM=0)
+    @patch("classification.services.ai_client.time.sleep")
+    @patch("classification.services.ai_client._get_gemini_client")
+    def test_rate_limit_retries(self, mock_get_client, mock_sleep):
         mock_client = mock_get_client.return_value
-        mock_client.messages.create.side_effect = _make_api_status_error(
+        mock_client.models.generate_content.side_effect = _make_api_status_error(
             429, "Rate limited"
         )
         from classification.services.ai_client import call_ai
 
         with self.assertRaises(AIClientError):
             call_ai("test prompt")
-        self.assertEqual(mock_client.messages.create.call_count, 3)
+        self.assertEqual(mock_client.models.generate_content.call_count, 3)
 
-    @patch("classification.services.ai_client._get_anthropic_client")
-    def test_client_error_no_retry(self, mock_get_client):
+    @override_settings(AI_RATE_LIMIT_RPM=0)
+    @patch("classification.services.ai_client.time.sleep")
+    @patch("classification.services.ai_client._get_gemini_client")
+    def test_client_error_no_retry(self, mock_get_client, mock_sleep):
         mock_client = mock_get_client.return_value
-        mock_client.messages.create.side_effect = _make_api_status_error(
+        mock_client.models.generate_content.side_effect = _make_api_status_error(
             400, "Bad request"
         )
         from classification.services.ai_client import call_ai
@@ -358,12 +366,12 @@ class RetryLogicTest(TestCase):
         with self.assertRaises(AIClientError):
             call_ai("test prompt")
         # 4xx (non-429) should NOT retry
-        self.assertEqual(mock_client.messages.create.call_count, 1)
+        self.assertEqual(mock_client.models.generate_content.call_count, 1)
 
-    @patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}, clear=False)
+    @patch.dict(os.environ, {"GEMINI_API_KEY": ""}, clear=False)
     def test_missing_api_key_fails_fast(self):
         from classification.services.ai_client import call_ai
 
         with self.assertRaises(AIClientError) as ctx:
             call_ai("test prompt")
-        self.assertIn("ANTHROPIC_API_KEY", str(ctx.exception))
+        self.assertIn("GEMINI_API_KEY", str(ctx.exception))

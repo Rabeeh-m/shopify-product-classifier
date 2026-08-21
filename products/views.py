@@ -1,12 +1,14 @@
 import logging
+import os
 
+from django.conf import settings
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from products.models import ProductImport
+from products.models import Product, ProductImage, ProductImport
 from products.serializers import ProductImportSerializer
-from products.services.import_service import ParseError, import_products
+from products.services.import_service import ParseError, validate_and_save_import
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +22,7 @@ class ProductImportCreateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
-            import_obj = import_products(upload, upload.name)
+            import_obj = validate_and_save_import(upload, upload.name)
         except ParseError as exc:
             logger.warning("Upload rejected: %s", exc.errors)
             return Response(
@@ -28,9 +30,11 @@ class ProductImportCreateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        from classification.tasks import process_all_pending
+        # Dispatch background task — this returns immediately so the HTTP
+        # response comes back in < 1 s regardless of file size.
+        from classification.tasks import import_and_classify_products
 
-        process_all_pending.delay()
+        import_and_classify_products.delay(import_obj.id)
 
         serializer = ProductImportSerializer(import_obj)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -47,3 +51,37 @@ class ProductImportDetailView(APIView):
             )
         serializer = ProductImportSerializer(import_obj)
         return Response(serializer.data)
+
+
+class ClearAllProductsView(APIView):
+    def delete(self, request):
+        from classification.models import Classification, ClassificationAttribute
+
+        product_ids = list(Product.objects.values_list("id", flat=True))
+
+        ClassificationAttribute.objects.filter(
+            classification__product_id__in=product_ids
+        ).delete()
+
+        Classification.objects.filter(product_id__in=product_ids).delete()
+
+        ProductImage.objects.filter(product_id__in=product_ids).delete()
+
+        import_files = ProductImport.objects.values_list("file", flat=True)
+        import_files_list = list(import_files)
+
+        ProductImport.objects.all().delete()
+        Product.objects.all().delete()
+
+        for f in import_files_list:
+            try:
+                file_path = os.path.join(settings.MEDIA_ROOT, f)
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+            except Exception as exc:
+                logger.warning("Failed to remove import file %s: %s", f, exc)
+
+        return Response(
+            {"message": "All products, classifications, and imports cleared."},
+            status=status.HTTP_200_OK,
+        )

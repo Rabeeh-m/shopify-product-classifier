@@ -64,6 +64,15 @@ export function getReviewList({ page = 1, search = "", minConfidence, maxConfide
   return request(`/api/classification/review/?${params.toString()}`);
 }
 
+export function getClassifiedProducts({ page = 1, search = "", status, categoryId } = {}) {
+  const params = new URLSearchParams();
+  params.set("page", page);
+  if (search) params.set("search", search);
+  if (status) params.set("status", status);
+  if (categoryId) params.set("category", categoryId);
+  return request(`/api/classification/products/?${params.toString()}`);
+}
+
 export function getReviewDetail(id) {
   return request(`/api/classification/review/${id}/`);
 }
@@ -84,4 +93,8 @@ export function correctClassification(id, { categoryId, attributes }) {
 
 export function searchCategories(query) {
   return request(`/api/taxonomy/categories/?search=${encodeURIComponent(query)}`);
+}
+
+export function clearAllProducts() {
+  return request("/api/products/clear/", { method: "DELETE" });
 }

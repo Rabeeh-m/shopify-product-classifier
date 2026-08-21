@@ -1,20 +1,26 @@
 import csv
+import hashlib
 import io
 import logging
 import os
 import re
 
 from django.conf import settings
-from django.db import transaction
 from django.utils import timezone as tz
 
 from products.models import Product, ProductImage, ProductImport
 
 logger = logging.getLogger(__name__)
 
-REQUIRED_COLUMNS = {"title"}
-OPTIONAL_COLUMNS = {"description", "brand", "product_type", "image_urls"}
-ALL_COLUMNS = REQUIRED_COLUMNS | OPTIONAL_COLUMNS
+STANDARD_COLUMNS = {
+    "title", "product_name", "description", "product_description",
+    "brand", "collection_name", "product_type", "product_category",
+    "product_sub_category", "image_urls", "product_number", "external_id", "sku"
+}
+for i in range(1, 21):
+    STANDARD_COLUMNS.add(f"image_{i}")
+    STANDARD_COLUMNS.add(f"image{i}")
+
 IMAGE_SEPARATORS = [",", "|"]
 
 # MIME types we accept per extension — used as a secondary check after extension.
@@ -154,6 +160,62 @@ def _parse_image_urls(raw_value):
     return [text]
 
 
+def _map_row(row):
+    """Map headers from Product List.xlsx or standard format to standard fields.
+
+    _normalize_header already strips leading/trailing whitespace and lower-cases
+    everything, so 'Product Description ' becomes 'product_description' in the row
+    dict before this function is ever called.
+    """
+    title = row.get("title") or row.get("product_name") or ""
+    title = str(title).strip()
+
+    description = row.get("product_description") or row.get("description") or ""
+    description = str(description).strip()
+
+    brand = row.get("brand") or row.get("collection_name") or ""
+    brand = str(brand).strip()
+
+    product_type = (
+        row.get("product_type")
+        or row.get("product_sub_category")
+        or row.get("product_category")
+        or ""
+    )
+    product_type = str(product_type).strip()
+
+    external_id = (
+        row.get("external_id") or row.get("product_number") or row.get("sku") or ""
+    )
+    external_id = str(external_id).strip()
+    if not external_id and title:
+        external_id = f"gen-{hashlib.md5(title.encode('utf-8')).hexdigest()[:12]}"
+
+    image_urls = []
+    if "image_urls" in row and row["image_urls"]:
+        image_urls = _parse_image_urls(row["image_urls"])
+    else:
+        for j in range(1, 21):
+            img_key = f"image_{j}"
+            if img_key in row:
+                val = row[img_key]
+            elif f"image{j}" in row:
+                val = row[f"image{j}"]
+            else:
+                val = None
+            if val and str(val).strip():
+                image_urls.append(str(val).strip())
+
+    return {
+        "title": title,
+        "description": description,
+        "brand": brand,
+        "product_type": product_type,
+        "external_id": external_id,
+        "image_urls": image_urls,
+    }
+
+
 def _validate_headers(headers):
     """Check that required columns are present and log unknown columns.
 
@@ -161,14 +223,68 @@ def _validate_headers(headers):
     """
     errors = []
     normalized = set(headers)
-    missing = REQUIRED_COLUMNS - normalized
-    if missing:
-        errors.append(f"Missing required column(s): {', '.join(sorted(missing))}")
-    unknown = normalized - ALL_COLUMNS
+    has_title = "title" in normalized or "product_name" in normalized
+    if not has_title:
+        errors.append("Missing required column(s): title")
+
+    unknown = normalized - STANDARD_COLUMNS
     if unknown:
         logger.warning("Skipping unknown columns: %s", sorted(unknown))
     return errors
 
+
+def parse_rows_from_import(import_obj):
+    """Re-open a saved import file and return (headers, rows).
+
+    Used by the background task to read the file that was already
+    persisted by Django's FileField during validate_and_save_import().
+    Raises ParseError on read / header errors.
+    """
+    filename = import_obj.file.name
+    ext = os.path.splitext(filename)[1].lower()
+
+    with import_obj.file.open("rb") as fh:
+        if ext == ".csv":
+            headers, rows = _read_csv(fh)
+        else:
+            headers, rows = _read_xlsx(fh)
+
+    header_errors = _validate_headers(headers)
+    if header_errors:
+        raise ParseError(header_errors)
+
+    return headers, rows
+
+
+def validate_and_save_import(file_obj, filename):
+    """Validate the uploaded file and create a ProductImport record.
+
+    This is the fast, synchronous part that runs inside the HTTP request:
+    - Validates extension, MIME type, and size.
+    - Persists the file via Django's FileField (writes to MEDIA_ROOT).
+    - Creates a ProductImport row with status=PROCESSING and total_rows=0
+      (the background task will update total_rows after parsing).
+
+    Returns the ProductImport instance.  Raises ParseError on validation
+    failure.  Does NOT insert any Product rows — that is left to the
+    background task so the HTTP response returns immediately.
+    """
+    _validate_file(file_obj, filename)
+    file_obj.seek(0)
+
+    import_obj = ProductImport.objects.create(
+        file=file_obj,
+        status=ProductImport.Status.PROCESSING,
+        total_rows=0,
+        imported_rows=0,
+        failed_rows=0,
+    )
+    return import_obj
+
+
+# ---------------------------------------------------------------------------
+# Legacy synchronous path (kept for tests / management commands).
+# ---------------------------------------------------------------------------
 
 def _create_products(rows, import_obj):
     """Create Product and ProductImage objects from parsed rows.
@@ -177,12 +293,15 @@ def _create_products(rows, import_obj):
     row doesn't roll back previously created products. Returns a tuple
     of (imported_count, failed_count, error_list).
     """
+    from django.db import transaction
+
     imported = 0
     failed = 0
     errors = []
 
     for i, row in enumerate(rows, start=2):
-        title = (row.get("title") or "").strip()
+        mapped = _map_row(row)
+        title = mapped["title"]
         if not title:
             failed += 1
             errors.append({"row": i, "error": "Missing required field: title"})
@@ -190,14 +309,14 @@ def _create_products(rows, import_obj):
 
         with transaction.atomic():
             product = Product.objects.create(
+                external_id=mapped["external_id"],
                 title=title,
-                description=(row.get("description") or "").strip(),
-                brand=(row.get("brand") or "").strip(),
-                product_type=(row.get("product_type") or "").strip(),
+                description=mapped["description"],
+                brand=mapped["brand"],
+                product_type=mapped["product_type"],
                 raw_data=row,
             )
-            image_urls = _parse_image_urls(row.get("image_urls"))
-            for url in image_urls:
+            for url in mapped["image_urls"]:
                 ProductImage.objects.create(product=product, url=url)
             imported += 1
 
@@ -205,12 +324,11 @@ def _create_products(rows, import_obj):
 
 
 def import_products(file_obj, filename):
-    """Validate, parse, and import products from a CSV or XLSX file.
+    """Validate, parse, and import products from a CSV or XLSX file (synchronous).
 
-    Creates a ProductImport record to track progress. Products with a
-    missing title are counted as failures but don't halt the import.
-    Raises ParseError on validation or header errors before any products
-    are created.
+    Legacy synchronous path used by tests and management commands.
+    The HTTP upload endpoint now calls validate_and_save_import() and
+    dispatches a background task instead.
     """
     _validate_file(file_obj, filename)
     file_obj.seek(0)
