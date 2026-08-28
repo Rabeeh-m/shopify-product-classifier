@@ -13,7 +13,7 @@ class ClassificationAttributeSerializer(serializers.ModelSerializer):
         fields = ["attribute_name", "value_display", "free_text_value"]
 
     def get_value_display(self, obj):
-        return str(obj.value) if obj.value else obj.free_text_value
+        return obj.value.value if obj.value else obj.free_text_value
 
 
 class ProductMinimalSerializer(serializers.Serializer):
@@ -73,6 +73,7 @@ class ClassificationSerializer(serializers.ModelSerializer):
             "attributes",
             "confidence",
             "status",
+            "source",
             "reviewed_by",
             "reviewed_at",
             "correction_notes",

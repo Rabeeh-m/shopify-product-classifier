@@ -8,6 +8,16 @@ class Classification(models.Model):
         APPROVED = "approved", "Approved"
         FAILED = "failed", "Failed"
 
+    class Source(models.TextChoices):
+        AI = "AI", "AI"
+        RULE = "Rule", "Rule"
+
+    source = models.CharField(
+        max_length=5,
+        choices=Source.choices,
+        default=Source.AI,
+        db_index=True,
+    )
     product = models.OneToOneField(
         "products.Product",
         on_delete=models.CASCADE,

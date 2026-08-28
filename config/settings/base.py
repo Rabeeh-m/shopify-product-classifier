@@ -105,6 +105,11 @@ CLASSIFICATION_CONFIDENCE_THRESHOLD = int(
 CLASSIFICATION_CONCURRENCY_LIMIT = int(
     os.environ.get("CLASSIFICATION_CONCURRENCY_LIMIT", "5")
 )
+# Products stuck in 'processing' longer than this are auto-requeued to
+# 'pending' on the next classification run (recovers interrupted runs).
+PROCESSING_STALE_TIMEOUT_SECONDS = int(
+    os.environ.get("PROCESSING_STALE_TIMEOUT_SECONDS", "300")
+)
 
 TAXONOMY_CACHE_TTL = int(os.environ.get("TAXONOMY_CACHE_TTL", "3600"))
 

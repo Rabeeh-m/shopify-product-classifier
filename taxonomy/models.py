@@ -27,6 +27,9 @@ class Category(models.Model):
 
 class Attribute(models.Model):
     name = models.CharField(max_length=255, unique=True)
+    shopify_attribute_gid = models.CharField(
+        max_length=255, unique=True, null=True, blank=True
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

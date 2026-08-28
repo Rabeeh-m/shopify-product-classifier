@@ -1,6 +1,7 @@
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import timedelta
 
 from django.conf import settings
 from django.db import transaction
@@ -15,33 +16,75 @@ IMPORT_BATCH_SIZE = getattr(settings, "IMPORT_BATCH_SIZE", 250)
 
 def _rule_classify(product):
     """Try the instant vendor mapping. Returns True if classified+saved."""
+    from classification.models import Classification
     from classification.services.persistence import save_classification
     from classification.services.rules import try_rule_classification
 
     result = try_rule_classification(product)
     if result is None:
         return False
-    save_classification(product, result)
+    save_classification(
+        product, result, source=Classification.Source.RULE
+    )
     return True
 
 
 def _ai_classify_safe(product):
     """AI fallback wrapper returning (product_id, error_or_None)."""
+    from classification.models import Classification
     from classification.services.classifier import classify_product
     from classification.services.persistence import save_classification
 
     try:
-        save_classification(product, classify_product(product))
+        save_classification(
+            product,
+            classify_product(product),
+            source=Classification.Source.AI,
+        )
         return (product.id, None)
     except Exception as exc:
         return (product.id, str(exc)[:500])
 
 
+def _requeue_stale_processing(products=None):
+    """Reset products stuck in 'processing' back to 'pending'.
+
+    A previous run may have died mid-way (e.g. the import's daemon thread
+    being recycled on a server restart), leaving products permanently in
+    'processing'. Requeueing any that have been processing longer than the
+    stale timeout lets a fresh run pick them up again.
+    """
+    from django.utils import timezone as _tz
+
+    timeout = float(getattr(settings, "PROCESSING_STALE_TIMEOUT_SECONDS", 300))
+    stale_cutoff = _tz.now() - timedelta(seconds=timeout)
+
+    qs = Product.objects.filter(status=Product.Status.PROCESSING)
+    if products is not None:
+        ids = {p.id for p in products}
+        qs = qs.filter(id__in=ids)
+    stale = qs.filter(
+        processing_started_at__lt=stale_cutoff
+    ).values_list("id", flat=True)
+    stale_ids = list(stale)
+    if stale_ids:
+        Product.objects.filter(id__in=stale_ids).update(
+            status=Product.Status.PENDING,
+            processing_started_at=None,
+        )
+        logger.info("Requeued %d stale 'processing' product(s)", len(stale_ids))
+    return stale_ids
+
+
 def process_products(product_ids=None, import_id=None):
     """Classify products in place: vendor rules inline, AI via thread pool.
 
-    Per-product failures are recorded and never stop the batch.
+    Per-product failures are recorded and never stop the batch. Products left
+    'processing' by a previously interrupted run are requeued and retried.
     """
+    # Recover products stuck by a previously interrupted (daemon-thread) run.
+    _requeue_stale_processing()
+
     concurrency_limit = getattr(settings, "CLASSIFICATION_CONCURRENCY_LIMIT", 5)
 
     # "failed" is included so re-runs (classify_products) retry products
@@ -220,20 +263,43 @@ def import_products(import_id):
     }
 
 
-def start_import_background(import_id):
-    """Run import + classification on a daemon thread so the upload
-    request returns immediately."""
+def _recover_import_after_crash(import_id):
+    """Reset an import's in-flight 'processing' products back to 'pending'.
 
+    Called when a background import crashes (e.g. interrupted during
+    interpreter shutdown) so products aren't left orphaned in 'processing';
+    a later run will retry them.
+    """
+    stuck = Product.objects.filter(
+        product_import_id=import_id, status=Product.Status.PROCESSING
+    )
+    updated = stuck.update(status=Product.Status.PENDING, processing_started_at=None)
+    if updated:
+        logger.info("Reset %d stuck 'processing' product(s) on crash", updated)
+    return updated
+
+
+def start_import_background(import_id):
+    """Run import + classification on a background thread so the upload
+    request returns immediately.
+
+    The thread is deliberately non-daemon: a daemon thread is killed abruptly
+    during interpreter shutdown (e.g. the dev server auto-reload), which can
+    interrupt process_products mid-run and leave products stuck in
+    'processing'. A non-daemon thread is joined during shutdown, so pending
+    work finishes (or at least records a clean failure) instead of crashing.
+    """
     def _run():
         try:
             import_products(import_id)
             process_products(import_id=import_id)
         except Exception:
             logger.exception("Background import %d crashed", import_id)
+            _recover_import_after_crash(import_id)
             ProductImport.objects.filter(pk=import_id).update(
                 status=ProductImport.Status.FAILED
             )
 
     threading.Thread(
-        target=_run, name=f"import-{import_id}", daemon=True
+        target=_run, name=f"import-{import_id}", daemon=False
     ).start()

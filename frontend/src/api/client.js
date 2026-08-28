@@ -68,11 +68,18 @@ export function getReviewList({ page = 1, search = "", minConfidence, maxConfide
   return request(`/api/classification/review/?${params.toString()}`);
 }
 
-export function getClassifiedProducts({ page = 1, search = "", status, categoryId } = {}) {
+export function getClassifiedProducts({
+  page = 1,
+  search = "",
+  status,
+  source,
+  categoryId,
+} = {}) {
   const params = new URLSearchParams();
   params.set("page", page);
   if (search) params.set("search", search);
   if (status) params.set("status", status);
+  if (source) params.set("source", source);
   if (categoryId) params.set("category", categoryId);
   return request(`/api/classification/products/?${params.toString()}`);
 }

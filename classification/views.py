@@ -253,6 +253,14 @@ class ClassifiedProductsView(APIView):
             if status_filter in valid_statuses:
                 qs = qs.filter(status=status_filter)
 
+        source_filter = request.query_params.get("source")
+        if source_filter:
+            source_filter = source_filter.lower()
+            if source_filter == "reviewed":
+                qs = qs.filter(reviewed_by__isnull=False)
+            elif source_filter in {"ai", "rule"}:
+                qs = qs.filter(source__iexact=source_filter)
+
         search = request.query_params.get("search")
         if search:
             qs = qs.filter(product__title__icontains=search)

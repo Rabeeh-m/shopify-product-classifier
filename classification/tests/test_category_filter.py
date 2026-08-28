@@ -1,5 +1,6 @@
 import os
 
+from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.db.models import Count
 from django.test import TestCase
@@ -210,3 +211,62 @@ class ClassifiedProductsPageSizeTest(TestCase):
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual(resp.data["count"], 25)
         self.assertEqual(len(resp.data["results"]), 20)
+
+
+class ClassifiedProductsSourceFilterTest(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        _load_taxonomy()
+        cls.cat = Category.objects.first()
+        cls.reviewer = User.objects.create_user(username="reviewer")
+
+    def setUp(self):
+        self.client = APIClient()
+
+    def _make(self, title, source="ai", reviewed=False):
+        product = _create_product(title, external_id=f"src-{title}")
+        cls = _create_classification(product, self.cat)
+        cls.source = source
+        if reviewed:
+            cls.reviewed_by = self.reviewer
+        cls.save()
+        return cls
+
+    def _ids(self, resp):
+        return {item["id"] for item in resp.data["results"]}
+
+    def test_source_ai_filter(self):
+        ai = self._make("AI Prod", source="ai")
+        self._make("Rule Prod", source="rule")
+        resp = self.client.get("/api/classification/products/?source=ai")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(self._ids(resp), {ai.id})
+
+    def test_source_rule_filter(self):
+        self._make("AI Prod", source="ai")
+        rule = self._make("Rule Prod", source="rule")
+        resp = self.client.get("/api/classification/products/?source=rule")
+        self.assertEqual(self._ids(resp), {rule.id})
+
+    def test_source_reviewed_filter(self):
+        reviewed = self._make("Reviewed Prod", source="ai", reviewed=True)
+        self._make("Not Reviewed", source="ai")
+        resp = self.client.get("/api/classification/products/?source=reviewed")
+        self.assertEqual(self._ids(resp), {reviewed.id})
+
+    def test_invalid_source_ignored(self):
+        self._make("AI Prod", source="ai")
+        self._make("Rule Prod", source="rule")
+        resp = self.client.get("/api/classification/products/?source=bogus")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["count"], 2)
+
+    def test_source_combined_with_status(self):
+        ai_approved = self._make("AI Approved", source="ai")
+        in_review = self._make("AI Needs Review", source="ai")
+        in_review.status = Classification.Status.NEEDS_REVIEW
+        in_review.save()
+        resp = self.client.get(
+            "/api/classification/products/?source=ai&status=approved"
+        )
+        self.assertEqual(self._ids(resp), {ai_approved.id})

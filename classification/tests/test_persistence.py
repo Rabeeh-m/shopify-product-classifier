@@ -115,6 +115,18 @@ class SaveClassificationTest(TestCase):
         self.assertAlmostEqual(result.confidence, 85.0)
         self.assertEqual(result.status, Classification.Status.APPROVED)
 
+    def test_classification_source_defaults_to_ai(self):
+        product = self._make_product()
+        result = save_classification(product, _ai_response())
+        self.assertEqual(result.source, Classification.Source.AI)
+
+    def test_classification_source_rule(self):
+        product = self._make_product()
+        result = save_classification(
+            product, _ai_response(), source=Classification.Source.RULE
+        )
+        self.assertEqual(result.source, Classification.Source.RULE)
+
     def test_classification_alternatives_saved(self):
         product = self._make_product()
         ai_resp = _ai_response()

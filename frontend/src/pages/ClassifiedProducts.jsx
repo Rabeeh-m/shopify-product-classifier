@@ -1,5 +1,9 @@
 import { useState, useEffect, useRef } from "react";
-import { getClassifiedProducts, getJobStatus, clearAllProducts } from "../api/client";
+import {
+  getClassifiedProducts,
+  getJobStatus,
+  clearAllProducts,
+} from "../api/client";
 
 const PAGE_SIZE = 20;
 
@@ -7,6 +11,29 @@ function confidenceClass(score) {
   if (score >= 70) return "confidence-high";
   if (score >= 50) return "confidence-medium";
   return "confidence-low";
+}
+
+function reviewBadge(item) {
+  const reviewed = Boolean(item.reviewed_by || item.reviewed_at);
+  if (reviewed) {
+    return {
+      label: "Reviewed",
+      title: "Reviewed by a human",
+      style: {
+        backgroundColor: "#14532d",
+        color: "#ffffff",
+        border: "1px solid #14532d",
+      },
+    };
+  }
+  const isRule = (item.source || "").toLowerCase() === "rule";
+  return {
+    label: isRule ? "Rule" : "AI",
+    title: isRule ? "Classified by vendor rule" : "Classified by AI",
+    style: isRule
+      ? { backgroundColor: "#ffffff", color: "#1a56db", border: "1px solid #1a56db" }
+      : { backgroundColor: "#111111", color: "#ffffff", border: "1px solid #111111" },
+  };
 }
 
 function statusBadge(status) {
@@ -37,21 +64,27 @@ function statusBadge(status) {
 
 function ProductCard({ item }) {
   const imageUrl = item.product.image_urls?.[0];
+  const badge = reviewBadge(item);
   return (
     <div className="product-card">
-      {imageUrl ? (
-        <img
-          className="card-image"
-          src={imageUrl}
-          alt={item.product.title}
-          loading="lazy"
-          onError={(e) => {
-            e.currentTarget.style.display = "none";
-          }}
-        />
-      ) : (
-        <div className="card-image-placeholder">No image</div>
-      )}
+      <div className="card-media">
+        {imageUrl ? (
+          <img
+            className="card-image"
+            src={imageUrl}
+            alt={item.product.title}
+            loading="lazy"
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
+          />
+        ) : (
+          <div className="card-image-placeholder">No image</div>
+        )}
+        <span className="review-badge" title={badge.title} style={badge.style}>
+          {badge.label}
+        </span>
+      </div>
       <div className="card-body">
         <div className="card-title" title={item.product.title}>
           {item.product.title}
@@ -60,6 +93,16 @@ function ProductCard({ item }) {
           {item.category?.full_path || "Uncategorized"}
         </div>
         {item.product.brand && <div className="card-brand">{item.product.brand}</div>}
+        {item.attributes?.length > 0 && (
+          <div className="card-attributes">
+            {item.attributes.map((a, i) => (
+              <div key={i} className="card-attribute">
+                <span className="card-attribute-name">{a.attribute_name}:</span>{" "}
+                {a.value_display || "(none)"}
+              </div>
+            ))}
+          </div>
+        )}
         {item.correction_notes && (
           <div className="correction-note" title={item.correction_notes}>
             Note: {item.correction_notes}
@@ -85,6 +128,7 @@ export default function ClassifiedProducts() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -103,6 +147,7 @@ export default function ClassifiedProducts() {
       page,
       search,
       status: statusFilter,
+      source: sourceFilter,
       categoryId,
     })
       .then((data) => {
@@ -122,7 +167,7 @@ export default function ClassifiedProducts() {
   useEffect(() => {
     setLoading(true);
     fetchRef.current();
-  }, [page, search, statusFilter, categoryId]);
+  }, [page, search, statusFilter, sourceFilter, categoryId]);
 
   // Poll while any classification work is in flight
   useEffect(() => {
@@ -156,6 +201,11 @@ export default function ClassifiedProducts() {
 
   const handleCategoryChange = (e) => {
     setCategoryId(e.target.value);
+    setPage(1);
+  };
+
+  const handleSourceChange = (e) => {
+    setSourceFilter(e.target.value);
     setPage(1);
   };
 
@@ -241,6 +291,16 @@ export default function ClassifiedProducts() {
           <option value="approved">Approved</option>
           <option value="needs_review">Needs Review</option>
           <option value="failed">Failed</option>
+        </select>
+        <select
+          id="source-filter"
+          value={sourceFilter}
+          onChange={handleSourceChange}
+        >
+          <option value="">All Sources</option>
+          <option value="ai">AI</option>
+          <option value="rule">Rule</option>
+          <option value="reviewed">Reviewed</option>
         </select>
         <select
           id="category-filter"

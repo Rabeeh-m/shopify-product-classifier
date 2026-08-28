@@ -1,0 +1,114 @@
+{
+  "version": 16,
+  "verticals": [
+    {
+      "name": "Furniture",
+      "prefix": "fr",
+      "categories": [
+        {
+          "id": "gid://shopify/TaxonomyCategory/fr",
+          "level": 0,
+          "name": "Furniture",
+          "full_name": "Furniture",
+          "parent_id": null,
+          "attributes": [
+            {
+              "id": "gid://shopify/TaxonomyAttribute/1",
+              "name": "Color",
+              "handle": "color",
+              "description": "Defines the primary color or pattern, such as blue or striped",
+              "extended": false
+            }
+          ]
+        },
+        {
+          "id": "gid://shopify/TaxonomyCategory/fr-1",
+          "level": 1,
+          "name": "Living Room",
+          "full_name": "Furniture > Living Room",
+          "parent_id": "gid://shopify/TaxonomyCategory/fr",
+          "attributes": [
+            {
+              "id": "gid://shopify/TaxonomyAttribute/1",
+              "name": "Color",
+              "handle": "color",
+              "description": "Defines the primary color or pattern, such as blue or striped",
+              "extended": false
+            }
+          ]
+        },
+        {
+          "id": "gid://shopify/TaxonomyCategory/fr-1-1",
+          "level": 2,
+          "name": "Sofas",
+          "full_name": "Furniture > Living Room > Sofas",
+          "parent_id": "gid://shopify/TaxonomyCategory/fr-1",
+          "attributes": [
+            {
+              "id": "gid://shopify/TaxonomyAttribute/1",
+              "name": "Color",
+              "handle": "color",
+              "description": "Defines the primary color or pattern, such as blue or striped",
+              "extended": false
+            },
+            {
+              "id": "gid://shopify/TaxonomyAttribute/3",
+              "name": "Pattern",
+              "handle": "pattern",
+              "description": "Describes the design or motif of a product, such as floral or striped",
+              "extended": false
+            }
+          ]
+        },
+        {
+          "id": "gid://shopify/TaxonomyCategory/fr-1-1-1",
+          "level": 3,
+          "name": "Sectional Sofas",
+          "full_name": "Furniture > Living Room > Sofas > Sectional Sofas",
+          "parent_id": "gid://shopify/TaxonomyCategory/fr-1-1",
+          "attributes": [
+            {
+              "id": "gid://shopify/TaxonomyAttribute/1",
+              "name": "Color",
+              "handle": "color",
+              "description": "Defines the primary color or pattern, such as blue or striped",
+              "extended": false
+            }
+          ]
+        },
+        {
+          "id": "gid://shopify/TaxonomyCategory/fr-2",
+          "level": 1,
+          "name": "Beds & Accessories",
+          "full_name": "Furniture > Beds & Accessories",
+          "parent_id": "gid://shopify/TaxonomyCategory/fr",
+          "attributes": []
+        },
+        {
+          "id": "gid://shopify/TaxonomyCategory/fr-2-1",
+          "level": 2,
+          "name": "Mattresses",
+          "full_name": "Furniture > Beds & Accessories > Mattresses",
+          "parent_id": "gid://shopify/TaxonomyCategory/fr-2",
+          "attributes": [
+            {
+              "id": "gid://shopify/TaxonomyAttribute/3",
+              "name": "Pattern",
+              "handle": "pattern",
+              "description": "Describes the design or motif of a product, such as floral or striped",
+              "extended": false
+            }
+          ]
+        },
+        {
+          "id": "gid://shopify/TaxonomyCategory/fr-2-1-1",
+          "level": 3,
+          "name": "Memory Foam Mattresses",
+          "full_name": "Furniture > Beds & Accessories > Mattresses > Memory Foam Mattresses",
+          "parent_id": "gid://shopify/TaxonomyCategory/fr-2-1",
+          "attributes": []
+        }
+      ]
+    }
+  ]
+}

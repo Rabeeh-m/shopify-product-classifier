@@ -1,0 +1,58 @@
+{
+  "version": 16,
+  "attributes": [
+    {
+      "id": "gid://shopify/TaxonomyAttribute/1",
+      "name": "Color",
+      "handle": "color",
+      "description": "Defines the primary color or pattern, such as blue or striped",
+      "extended_attributes": [],
+      "values": [
+        {
+          "id": "gid://shopify/TaxonomyValue/1",
+          "name": "Red",
+          "handle": "color__red"
+        },
+        {
+          "id": "gid://shopify/TaxonomyValue/2",
+          "name": "Blue",
+          "handle": "color__blue"
+        },
+        {
+          "id": "gid://shopify/TaxonomyValue/3",
+          "name": "Brown",
+          "handle": "color__brown"
+        },
+        {
+          "id": "gid://shopify/TaxonomyValue/4",
+          "name": "Black",
+          "handle": "color__black"
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/TaxonomyAttribute/3",
+      "name": "Pattern",
+      "handle": "pattern",
+      "description": "Describes the design or motif of a product, such as floral or striped",
+      "extended_attributes": [],
+      "values": [
+        {
+          "id": "gid://shopify/TaxonomyValue/30",
+          "name": "Solid",
+          "handle": "pattern__solid"
+        },
+        {
+          "id": "gid://shopify/TaxonomyValue/31",
+          "name": "Striped",
+          "handle": "pattern__striped"
+        },
+        {
+          "id": "gid://shopify/TaxonomyValue/32",
+          "name": "Floral",
+          "handle": "pattern__floral"
+        }
+      ]
+    }
+  ]
+}
