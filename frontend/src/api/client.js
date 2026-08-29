@@ -84,6 +84,10 @@ export function getClassifiedProducts({
   return request(`/api/classification/products/?${params.toString()}`);
 }
 
+export function getClassifiedProductDetail(id) {
+  return request(`/api/classification/products/${id}/`);
+}
+
 export function approveClassification(id) {
   return request(`/api/classification/review/${id}/approve/`, { method: "POST" });
 }

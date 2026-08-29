@@ -6,7 +6,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from classification.models import Classification
-from classification.serializers import ClassificationSerializer
+from classification.serializers import (
+    ClassificationDetailSerializer,
+    ClassificationSerializer,
+)
 from classification.services.review_service import (
     ReviewError,
     approve_classification,
@@ -335,6 +338,32 @@ class ClassifiedProductsView(APIView):
 
     def get_paginated_response(self, data):
         return self.paginator.get_paginated_response(data)
+
+
+class ClassifiedProductDetailView(APIView):
+    def get(self, request, pk):
+        try:
+            classification = (
+                Classification.objects.select_related(
+                    "product", "category", "reviewed_by"
+                )
+                .prefetch_related(
+                    "attributes__attribute",
+                    "attributes__value",
+                    "product__images",
+                )
+                .get(pk=pk)
+            )
+        except Classification.DoesNotExist:
+            return Response(
+                {"error": "Product not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = ClassificationDetailSerializer(
+            classification, context={"request": request}
+        )
+        return Response(serializer.data)
 
 
 class ReviewCorrectView(APIView):

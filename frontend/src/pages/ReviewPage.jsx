@@ -5,12 +5,7 @@ import {
   correctClassification,
   searchCategories,
 } from "../api/client";
-
-function confidenceClass(score) {
-  if (score >= 70) return "confidence-high";
-  if (score >= 50) return "confidence-medium";
-  return "confidence-low";
-}
+import ConfidenceRing from "../components/ConfidenceRing";
 
 function ReviewItemDetail({ item, onResolved }) {
   const [actionLoading, setActionLoading] = useState(false);
@@ -101,9 +96,7 @@ function ReviewItemDetail({ item, onResolved }) {
           <h3>Alternatives</h3>
           {item.alternatives.map((alt, i) => (
             <div key={i} className="alternative-item">
-              <span className={`confidence-badge ${confidenceClass(alt.confidence)}`}>
-                {Math.round(alt.confidence)}%
-              </span>
+              <ConfidenceRing score={alt.confidence} size={26} strokeWidth={4} />
               <span>
                 {alt.category?.full_path || `Category #${alt.category_id}`}
               </span>
@@ -351,11 +344,7 @@ export default function ReviewPage() {
                       {item.category?.full_path || "Uncategorized"}
                     </div>
                   </div>
-                  <span
-                    className={`confidence-badge ${confidenceClass(item.confidence)}`}
-                  >
-                    {Math.round(item.confidence)}%
-                  </span>
+                  <ConfidenceRing score={item.confidence} />
                 </div>
                 {expandedId === item.id && (
                   <ReviewItemDetail item={item} onResolved={handleResolved} />

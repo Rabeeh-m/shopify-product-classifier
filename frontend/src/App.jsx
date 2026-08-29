@@ -4,6 +4,7 @@ import Footer from "./components/Footer";
 import UploadPage from "./pages/UploadPage";
 import ReviewPage from "./pages/ReviewPage";
 import ClassifiedProducts from "./pages/ClassifiedProducts";
+import ProductDetailPage from "./pages/ProductDetailPage";
 
 export default function App() {
   return (
@@ -13,6 +14,7 @@ export default function App() {
         <Routes>
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/products" element={<ClassifiedProducts />} />
+          <Route path="/products/:id" element={<ProductDetailPage />} />
           <Route path="/review" element={<ReviewPage />} />
           <Route path="*" element={<Navigate to="/upload" replace />} />
         </Routes>

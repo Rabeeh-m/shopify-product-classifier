@@ -1,17 +1,13 @@
 import { useState, useEffect, useRef } from "react";
+import { Link } from "react-router-dom";
 import {
   getClassifiedProducts,
   getJobStatus,
   clearAllProducts,
 } from "../api/client";
+import ConfidenceRing from "../components/ConfidenceRing";
 
 const PAGE_SIZE = 20;
-
-function confidenceClass(score) {
-  if (score >= 70) return "confidence-high";
-  if (score >= 50) return "confidence-medium";
-  return "confidence-low";
-}
 
 function reviewBadge(item) {
   const reviewed = Boolean(item.reviewed_by || item.reviewed_at);
@@ -30,17 +26,19 @@ function reviewBadge(item) {
   return {
     label: isRule ? "Rule" : "AI",
     title: isRule ? "Classified by vendor rule" : "Classified by AI",
-    style: isRule
-      ? { backgroundColor: "#ffffff", color: "#1a56db", border: "1px solid #1a56db" }
-      : { backgroundColor: "#111111", color: "#ffffff", border: "1px solid #111111" },
+    style: {
+      backgroundColor: "#ffffff",
+      color: "#1a56db",
+      border: "1px solid #1a56db",
+    },
   };
 }
 
 function statusBadge(status) {
   const map = {
-    approved: { bg: "#000000", color: "#ffffff", border: "1px solid #000000" },
-    needs_review: { bg: "#ffffff", color: "#111111", border: "1px solid #111111" },
-    failed: { bg: "#f0f0f0", color: "#888888", border: "1px solid #dddddd" },
+    approved: { bg: "#16a34a", color: "#ffffff", border: "1px solid #16a34a" },
+    needs_review: { bg: "#eab308", color: "#111111", border: "1px solid #eab308" },
+    failed: { bg: "#dc2626", color: "#ffffff", border: "1px solid #dc2626" },
   };
   const style = map[status] || map.needs_review;
   return (
@@ -66,7 +64,7 @@ function ProductCard({ item }) {
   const imageUrl = item.product.image_urls?.[0];
   const badge = reviewBadge(item);
   return (
-    <div className="product-card">
+    <Link className="product-card" to={`/products/${item.id}`}>
       <div className="card-media">
         {imageUrl ? (
           <img
@@ -109,13 +107,11 @@ function ProductCard({ item }) {
           </div>
         )}
         <div className="card-badges">
-          <span className={`confidence-badge ${confidenceClass(item.confidence)}`}>
-            {Math.round(item.confidence)}%
-          </span>
+          <ConfidenceRing score={item.confidence} />
           {statusBadge(item.status)}
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
 

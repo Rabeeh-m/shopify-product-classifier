@@ -2,6 +2,7 @@ from django.urls import path
 
 from classification.views import (
     ClassificationJobStatusView,
+    ClassifiedProductDetailView,
     ClassifiedProductsView,
     ReviewApproveView,
     ReviewCorrectView,
@@ -21,6 +22,11 @@ urlpatterns = [
         "api/classification/products/",
         ClassifiedProductsView.as_view(),
         name="classified-products",
+    ),
+    path(
+        "api/classification/products/<int:pk>/",
+        ClassifiedProductDetailView.as_view(),
+        name="classified-product-detail",
     ),
     path(
         "api/classification/review/",

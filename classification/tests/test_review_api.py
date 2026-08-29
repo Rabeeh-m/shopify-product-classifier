@@ -7,7 +7,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from classification.models import Classification
-from products.models import Product
+from products.models import Product, ProductImage
 from taxonomy.models import Attribute, AttributeValue, Category, CategoryAttribute
 
 FIXTURE_PATH = os.path.join(
@@ -354,3 +354,62 @@ class ReviewCorrectTest(TestCase):
         response = self.client.get(f"/api/classification/review/{classification.pk}/")
         self.assertEqual(len(response.data["alternatives"]), 1)
         self.assertEqual(response.data["alternatives"][0]["category_id"], alt_cat.id)
+
+
+class ClassifiedProductDetailTest(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        _load_taxonomy()
+        cls.cat = Category.objects.first()
+
+    def setUp(self):
+        self.client = APIClient()
+
+    def test_get_detail_includes_full_product(self):
+        p = Product.objects.create(
+            external_id="pd-001",
+            title="Detailed Product",
+            description="A full description",
+            brand="Acme",
+            product_type="Sofa",
+            raw_data={"sku": "ACME-1", "color": "Red"},
+        )
+        classification = _create_classification(p, confidence=88.0)
+
+        response = self.client.get(
+            f"/api/classification/products/{classification.pk}/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], classification.pk)
+
+        product = response.data["product"]
+        self.assertEqual(product["title"], "Detailed Product")
+        self.assertEqual(product["description"], "A full description")
+        self.assertEqual(product["brand"], "Acme")
+        self.assertEqual(product["product_type"], "Sofa")
+        self.assertEqual(product["external_id"], "pd-001")
+        self.assertEqual(product["raw_data"], {"sku": "ACME-1", "color": "Red"})
+        self.assertIn("images", product)
+        self.assertIn("created_at", product)
+        self.assertIn("updated_at", product)
+
+        self.assertEqual(response.data["confidence"], 88.0)
+        self.assertEqual(response.data["category"]["id"], self.cat.id)
+
+    def test_get_detail_includes_images(self):
+        p = Product.objects.create(
+            external_id="pd-img", title="Product With Image"
+        )
+        ProductImage.objects.create(product=p, url="/media/pd-img.jpg")
+        classification = _create_classification(p)
+
+        response = self.client.get(
+            f"/api/classification/products/{classification.pk}/"
+        )
+        product = response.data["product"]
+        self.assertEqual(len(product["images"]), 1)
+        self.assertTrue(product["images"][0].endswith("/media/pd-img.jpg"))
+
+    def test_get_detail_not_found(self):
+        response = self.client.get("/api/classification/products/99999/")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

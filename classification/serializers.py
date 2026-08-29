@@ -30,6 +30,28 @@ class ProductMinimalSerializer(serializers.Serializer):
         return urls
 
 
+class ProductDetailSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    title = serializers.CharField()
+    description = serializers.CharField()
+    brand = serializers.CharField()
+    product_type = serializers.CharField()
+    external_id = serializers.CharField()
+    raw_data = serializers.JSONField()
+    status = serializers.CharField()
+    error_message = serializers.CharField()
+    images = serializers.SerializerMethodField()
+    created_at = serializers.DateTimeField()
+    updated_at = serializers.DateTimeField()
+
+    def get_images(self, obj):
+        request = self.context.get("request")
+        urls = [img.url for img in obj.images.all()]
+        if request:
+            return [request.build_absolute_uri(url) for url in urls]
+        return urls
+
+
 class CategorySerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField()
@@ -106,3 +128,9 @@ class ClassificationSerializer(serializers.ModelSerializer):
             ctx_cache.update({c.id: c for c in Category.objects.filter(id__in=missing)})
 
         return AlternativeSerializer(raw, many=True, context=self.context).data
+
+
+class ClassificationDetailSerializer(ClassificationSerializer):
+    """Full classification payload for a single product's detail view."""
+
+    product = ProductDetailSerializer(read_only=True)
