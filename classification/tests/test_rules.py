@@ -4,6 +4,9 @@ from unittest.mock import patch
 from django.test import TestCase
 
 from classification.services.rules import (
+    FUZZY_MATCH_THRESHOLD,
+    FUZZY_SKIP,
+    FUZZY_WIN_MARGIN,
     VENDOR_CATEGORY_MAP,
     VENDOR_RULE_CONFIDENCE,
     _normalize,
@@ -22,6 +25,10 @@ def _fake_categories():
         types.SimpleNamespace(
             id=4, name="Throw Pillows", full_path="Decor > Throw Pillows"
         ),
+        types.SimpleNamespace(
+            id=5, name="Office Chairs", full_path="Office > Office Chairs"
+        ),
+        types.SimpleNamespace(id=6, name="Chairs", full_path="Dining > Chairs"),
     ]
 
 
@@ -126,3 +133,69 @@ class TryRuleClassificationTest(TestCase):
         # Every mapped value must be a unique leaf name.
         values = list(VENDOR_CATEGORY_MAP.values())
         self.assertEqual(len(values), len(set(values)))
+
+
+class FuzzyMatchTest(TestCase):
+    """Fuzzy matching must be forgiving enough to catch typos/plurals but
+    strict enough to avoid wrong-category risk."""
+
+    def _patch_taxonomy(self):
+        return patch(
+            "taxonomy.services.cache.get_all_categories",
+            return_value=_fake_categories(),
+        )
+
+    @patch.dict(
+        VENDOR_CATEGORY_MAP,
+        {"office chairs": "Office Chairs", "chair": "Chairs"},
+        clear=True,
+    )
+    def test_typo_fuzzy_matches_to_rule(self):
+        # "office chaire" (typo) is clearly closest to "office chairs" and the
+        # fake taxonomy has an "Office Chairs" leaf → resolved as a rule, not
+        # sent to AI.
+        p = _product(product_type="office chaire")
+        with self._patch_taxonomy():
+            result = try_rule_classification(p)
+        self.assertEqual(result["chosen_category_id"], 5)
+        self.assertEqual(result["confidence"], VENDOR_RULE_CONFIDENCE)
+        self.assertIn("[rules]", result["reasoning"])
+        self.assertIn("fuzzy", result["reasoning"])
+
+    @patch.dict(
+        VENDOR_CATEGORY_MAP,
+        {"office chairs": "Office Chairs", "chair": "Chairs"},
+        clear=True,
+    )
+    def test_exact_match_still_beats_fuzzy(self):
+        p = _product(product_type="office chairs")
+        with self._patch_taxonomy():
+            result = try_rule_classification(p)
+        self.assertEqual(result["chosen_category_id"], 5)
+        self.assertIn("exact", result["reasoning"])
+
+    @patch.dict(
+        VENDOR_CATEGORY_MAP,
+        {"sectional sofas": "Sectional Sofas", "sofa": "Sofas"},
+        clear=True,
+    )
+    def test_ambiguous_value_does_not_guess(self):
+        # "sofa and chairs" has no exact hit and its best fuzzy matches ("sofa",
+        # "sectional sofas") are close together → must NOT be guessed; fall to AI.
+        p = _product(product_type="sofa and chairs")
+        with self._patch_taxonomy():
+            result = try_rule_classification(p)
+        self.assertIsNone(result)
+
+    @patch.dict(VENDOR_CATEGORY_MAP, {"sofa sectionals": "Sectional Sofas"})
+    def test_skip_list_entries_are_never_fuzzy_matched(self):
+        for ambiguous in FUZZY_SKIP:
+            p = _product(product_type=ambiguous)
+            with self._patch_taxonomy():
+                self.assertIsNone(try_rule_classification(p))
+
+    def test_threshold_and_margin_are_sanely_configured(self):
+        # These knobs are what keep wrong-category risk low. Guard against
+        # accidental weakening.
+        self.assertGreaterEqual(FUZZY_MATCH_THRESHOLD, 80)
+        self.assertGreaterEqual(FUZZY_WIN_MARGIN, 5)
